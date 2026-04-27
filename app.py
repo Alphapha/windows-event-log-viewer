@@ -114,22 +114,26 @@ def build_db():
     if filename in prebuild_threads:
         return jsonify({'status': 'building', 'message': '正在构建中，请稍候'})
     
+    # 使用Event来标记构建完成，避免线程过早从字典中移除
+    import threading
+    done_event = threading.Event()
+    prebuild_threads[filename] = {'thread': None, 'done': done_event}
+    
     def do_build():
         try:
             parser = EvtxParser(filepath)
             if force:
-                # 强制重建：删除旧数据库
                 if os.path.exists(parser.db_path):
                     os.remove(parser.db_path)
             parser.ensure_db()
         except Exception as e:
             print(f"构建失败: {e}")
         finally:
-            if filename in prebuild_threads:
-                del prebuild_threads[filename]
+            done_event.set()
     
-    prebuild_threads[filename] = threading.Thread(target=do_build, daemon=True)
-    prebuild_threads[filename].start()
+    t = threading.Thread(target=do_build, daemon=True)
+    prebuild_threads[filename]['thread'] = t
+    t.start()
     
     return jsonify({'status': 'started', 'message': '开始构建数据库'})
 
@@ -137,8 +141,12 @@ def build_db():
 def build_status():
     """查询构建状态"""
     filename = request.args.get('filename')
-    if filename in prebuild_threads:
+    info = prebuild_threads.get(filename)
+    if info and not info['done'].is_set():
         return jsonify({'status': 'building', 'progress': '正在构建...'})
+    # 构建完成或不存在，清理记录
+    if filename in prebuild_threads:
+        del prebuild_threads[filename]
     return jsonify({'status': 'idle'})
 
 @app.route('/api/fields')

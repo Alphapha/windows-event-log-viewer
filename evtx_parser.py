@@ -158,85 +158,108 @@ class EvtxParser:
         从EVTX文件构建SQLite数据库
         返回: 事件数量
         """
-        # 先初始化数据库（创建表结构）
+        # 创建数据库并初始化表结构
+        if os.path.exists(self.db_path):
+            os.remove(self.db_path)
+        
+        # 清理可能残留的WAL/SHM文件
+        for suffix in ['-wal', '-shm']:
+            path = self.db_path + suffix
+            if os.path.exists(path):
+                os.remove(path)
+        
+        # 使用单一连接贯穿整个构建过程，避免WAL多连接可见性问题
         conn = init_db(self.db_path)
-        conn.close()
+        c = conn.cursor()
 
         print(f"[{os.path.basename(self.evtx_path)}] 开始解析...")
         start = time.time()
 
-        with open(self.evtx_path, 'rb') as f:
-            buf = f.read()
-            header = FileHeader(buf, 0)
+        try:
+            with open(self.evtx_path, 'rb') as f:
+                buf = f.read()
+                header = FileHeader(buf, 0)
 
-            xml_records = []
-            for chunk in header.chunks():
-                for record in chunk.records():
-                    try:
-                        xml_records.append(record.xml())
-                    except Exception:
-                        continue
+                xml_records = []
+                for chunk in header.chunks():
+                    for record in chunk.records():
+                        try:
+                            xml_records.append(record.xml())
+                        except Exception:
+                            continue
 
-        extract_time = time.time() - start
-        print(f"  提取XML: {len(xml_records)}条, 耗时{extract_time:.2f}秒")
+            extract_time = time.time() - start
+            print(f"  提取XML: {len(xml_records)}条, 耗时{extract_time:.2f}秒")
 
-        parsed_records = []
-        batch_size = 1000
+            parsed_records = []
+            batch_size = 1000
 
-        if use_multiprocess and len(xml_records) > 200:
-            cpu_count = min(multiprocessing.cpu_count(), 8)
-            chunk_size = max(100, len(xml_records) // (cpu_count * 2))
+            if use_multiprocess and len(xml_records) > 200:
+                cpu_count = min(multiprocessing.cpu_count(), 8)
+                chunk_size = max(100, len(xml_records) // (cpu_count * 2))
 
-            with ProcessPoolExecutor(max_workers=cpu_count) as executor:
-                args_list = [(xml,) for xml in xml_records]
-                for result in executor.map(parse_single_record, args_list, chunksize=chunk_size):
+                with ProcessPoolExecutor(max_workers=cpu_count) as executor:
+                    args_list = [(xml,) for xml in xml_records]
+                    for result in executor.map(parse_single_record, args_list, chunksize=chunk_size):
+                        if result is not None:
+                            parsed_records.append(result)
+                            if len(parsed_records) >= batch_size:
+                                batch = parsed_records
+                                parsed_records = []
+                                self._insert_batch_to_cursor(c, batch)
+            else:
+                for xml in xml_records:
+                    result = parse_single_record((xml,))
                     if result is not None:
                         parsed_records.append(result)
                         if len(parsed_records) >= batch_size:
                             batch = parsed_records
                             parsed_records = []
-                            self._insert_batch_to_db(batch)
-        else:
-            for xml in xml_records:
-                result = parse_single_record((xml,))
-                if result is not None:
-                    parsed_records.append(result)
-                    if len(parsed_records) >= batch_size:
-                        batch = parsed_records
-                        parsed_records = []
-                        self._insert_batch_to_db(batch)
+                            self._insert_batch_to_cursor(c, batch)
 
-        if parsed_records:
-            self._insert_batch_to_db(parsed_records)
+            if parsed_records:
+                self._insert_batch_to_cursor(c, parsed_records)
 
-        # 执行WAL checkpoint，确保数据从WAL文件刷入主数据库文件
-        # 这样后续的只读查询连接才能看到数据
-        checkpoint_conn = sqlite3.connect(self.db_path)
-        checkpoint_conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
-        checkpoint_conn.close()
+        except Exception as e:
+            print(f"  解析失败: {e}")
+            conn.close()
+            raise
 
-        conn = sqlite3.connect(self.db_path)
-        total = conn.execute("SELECT COUNT(*) FROM events").fetchone()[0]
-        conn.close()
-        total_time = time.time() - start
-        print(f"  数据库构建完成: {total}条, 总耗时{total_time:.2f}秒")
-        return total
+        try:
+            # 提交事务 + 双重WAL checkpoint，确保数据刷入主数据库文件
+            conn.commit()
+            conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+            conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+            
+            total = c.execute("SELECT COUNT(*) FROM events").fetchone()[0]
+            conn.close()
+            
+            # 验证数据确实写入
+            verify_conn = sqlite3.connect(self.db_path)
+            verify_total = verify_conn.execute("SELECT COUNT(*) FROM events").fetchone()[0]
+            verify_conn.close()
+            
+            if verify_total != total:
+                raise Exception(f"验证失败: 预期{total}条, 实际{verify_total}条")
+            
+            total_time = time.time() - start
+            print(f"  数据库构建完成: {total}条, 总耗时{total_time:.2f}秒")
+            return total
+        except Exception as e:
+            conn.close()
+            raise
 
-    def _insert_batch_to_db(self, batch):
-        """批量插入数据到SQLite（在主进程执行，不包含RawXML以节省空间）"""
+    @staticmethod
+    def _insert_batch_to_cursor(cursor, batch):
+        """批量插入数据（不含RawXML以节省空间）"""
         batch_no_xml = []
         for item in batch:
             item_copy = {k: v for k, v in item.items() if k != 'RawXML'}
             batch_no_xml.append(item_copy)
-
-        conn = sqlite3.connect(self.db_path)
-        c = conn.cursor()
-        c.executemany('''
+        cursor.executemany('''
             INSERT INTO events (record_id, event_id, time_created, level, provider, channel, computer, user_id, message, event_data)
             VALUES (:RecordID, :EventID, :TimeCreated, :Level, :Provider, :Channel, :Computer, :UserID, :Message, :EventData)
         ''', batch_no_xml)
-        conn.commit()
-        conn.close()
 
     def ensure_db(self, use_multiprocess: bool = True) -> int:
         """
@@ -249,6 +272,12 @@ class EvtxParser:
             needs_rebuild = True
         else:
             try:
+                # 清理可能残留的WAL/SHM文件
+                for suffix in ['-wal', '-shm']:
+                    path = self.db_path + suffix
+                    if os.path.exists(path):
+                        os.remove(path)
+                
                 conn = sqlite3.connect(self.db_path)
                 columns = [row[1] for row in conn.execute("PRAGMA table_info(events)").fetchall()]
                 total = conn.execute("SELECT COUNT(*) FROM events").fetchone()[0]
@@ -264,8 +293,13 @@ class EvtxParser:
                 needs_rebuild = True
         
         if needs_rebuild:
+            # 先清理旧数据库和WAL/SHM文件
             if os.path.exists(self.db_path):
                 os.remove(self.db_path)
+            for suffix in ['-wal', '-shm']:
+                path = self.db_path + suffix
+                if os.path.exists(path):
+                    os.remove(path)
             return self._build_db(use_multiprocess)
         else:
             conn = sqlite3.connect(self.db_path)

@@ -149,39 +149,55 @@
     <div class="container">
         <div class="sidebar">
             <div class="sidebar-header">
-                <h2>📁 事件日志查看器</h2>
-                <p>选择日志文件进行查看</p>
+                <h2>&#x1F4C1; &#x4E8B;&#x4EF6;&#x65E5;&#x5FD7;&#x67E5;&#x770B;&#x5668;</h2>
+                <p>&#x9009;&#x62E9;&#x65E5;&#x5FD7;&#x6587;&#x4EF6;&#x8FDB;&#x884C;&#x67E5;&#x770B;</p>
             </div>
             <div class="category-filter">
                 <select class="category-select" id="categoryFilter" onchange="filterByCategory()">
-                    <option value="all"> 全部类型</option>
-                    <option value="安全日志">🔒 安全日志</option>
-                    <option value="系统日志">️ 系统日志</option>
-                    <option value="应用程序日志">📦 应用程序日志</option>
-                    <option value="Setup日志"> Setup日志</option>
-                    <option value="其他日志">📄 其他日志</option>
+                    <option value="all">&#x1F4C2; &#x5168;&#x90E8;&#x7C7B;&#x578B;</option>
+                    <option value="&#x5B89;&#x5168;&#x65E5;&#x5FD7;">&#x1F512; &#x5B89;&#x5168;&#x65E5;&#x5FD7;</option>
+                    <option value="&#x7CFB;&#x7EDF;&#x65E5;&#x5FD7;">&#x2699; &#x7CFB;&#x7EDF;&#x65E5;&#x5FD7;</option>
+                    <option value="&#x5E94;&#x7528;&#x7A0B;&#x5E8F;&#x65E5;&#x5FD7;">&#x1F4E6; &#x5E94;&#x7528;&#x7A0B;&#x5E8F;&#x65E5;&#x5FD7;</option>
+                    <option value="Setup&#x65E5;&#x5FD7;">&#x1F527; Setup&#x65E5;&#x5FD7;</option>
+                    <option value="&#x5176;&#x4ED6;&#x65E5;&#x5FD7;">&#x1F4C4; &#x5176;&#x4ED6;&#x65E5;&#x5FD7;</option>
                 </select>
             </div>
             <div class="file-list" id="fileList">
-                <div class="empty-state"><p>加载中...</p></div>
+                <div class="empty-state"><p>&#x52A0;&#x8F7D;&#x4E2D;...</p></div>
             </div>
         </div>
 
         <div class="main-content">
             <div class="toolbar">
                 <div class="toolbar-row">
-                    <h3 id="currentFile">请选择文件</h3>
-                    <input class="search-box" id="searchBox" placeholder="搜索事件ID/提供程序/消息..." onkeydown="if(event.key==='Enter')doSearch()">
-                    <button class="search-btn" onclick="doSearch()">🔍 搜索</button>
+                    <h3 id="currentFile">&#x8BF7;&#x9009;&#x62E9;&#x6587;&#x4EF6;</h3>
+                    <input class="search-box" id="searchBox" placeholder="&#x641C;&#x7D22;&#x4E8B;&#x4EF6;ID/&#x63D0;&#x4F9B;&#x7A0B;&#x5E8F;/&#x6D88;&#x606F;..." onkeydown="if(event.key==='Enter')doSearch()">
+                    <button class="search-btn" onclick="doSearch()">
+                        &#x1F50D; &#x641C;&#x7D22;
+                    </button>
                     <select class="level-filter" id="levelFilter" onchange="applyLevelFilter()">
-                        <option value="">全部级别</option>
-                        <option value="严重">🔴 严重</option>
-                        <option value="错误"> 错误</option>
-                        <option value="警告">🟡 警告</option>
-                        <option value="信息">🟢 信息</option>
-                        <option value="详细"> 详细</option>
+                        <option value="">
+                            &#x5168;&#x90E8;&#x7EA7;&#x522B;
+                        </option>
+                        <option value="&#x4E25;&#x91CD;">
+                            &#x1F534; &#x4E25;&#x91CD;
+                        </option>
+                        <option value="&#x9519;&#x8BEF;">
+                            &#x1F7E0; &#x9519;&#x8BEF;
+                        </option>
+                        <option value="&#x8B66;&#x544A;">
+                            &#x1F7E1; &#x8B66;&#x544A;
+                        </option>
+                        <option value="&#x4FE1;&#x606F;">
+                            &#x1F7E2; &#x4FE1;&#x606F;
+                        </option>
+                        <option value="&#x8BE6;&#x7EC6;">
+                            &#x1F535; &#x8BE6;&#x7EC6;
+                        </option>
                     </select>
-                    <button class="refresh-btn" onclick="rebuildDb()" title="强制重新构建数据库"> 重建</button>
+                    <button class="refresh-btn" onclick="rebuildDb()" title="&#x5F3A;&#x5236;&#x91CD;&#x65B0;&#x6784;&#x5EFA;&#x6570;&#x636E;&#x5E93;">
+                        &#x1F504; &#x91CD;&#x5EFA;
+                    </button>
                 </div>
                 <div class="toolbar-row">
                     <div class="field-selector" id="fieldSelector"></div>
@@ -190,9 +206,11 @@
 
             <div class="content-area" id="contentArea">
                 <div class="empty-state">
-                    <div class="icon">📋</div>
-                    <p>请从左侧选择一个日志文件</p>
-                    <p style="font-size:12px;margin-top:8px;color:#aaa">首次打开会自动解析并构建数据库，之后查询毫秒级响应</p>
+                    <div class="icon">&#x1F4CB;</div>
+                    <p>&#x8BF7;&#x4ECE;&#x5DE6;&#x4FA7;&#x9009;&#x62E9;&#x4E00;&#x4E2A;&#x65E5;&#x5FD7;&#x6587;&#x4EF6;</p>
+                    <p style="font-size:12px;margin-top:8px;color:#aaa">
+                        &#x9996;&#x6B21;&#x6253;&#x5F00;&#x4F1A;&#x81EA;&#x52A8;&#x89E3;&#x6790;&#x5E76;&#x6784;&#x5EFA;&#x6570;&#x636E;&#x5E93;&#xFF0C;&#x4E4B;&#x540E;&#x67E5;&#x8BE2;&#x6BEB;&#x79D2;&#x7EA7;&#x54CD;&#x5E94;
+                    </p>
                 </div>
             </div>
 
@@ -316,11 +334,10 @@
                 totalPages = data.total_pages;
                 currentEvents = data.events || [];
 
-                const badge = data.from_cache ? '<span class="cache-badge">⚡ 毫秒级</span>' : '';
+                const badge = data.from_cache ? '<span class="cache-badge">毫秒级</span>' : '';
                 const levelInfo = selectedLevel ? ` | 级别: ${selectedLevel}` : '';
                 document.getElementById('statsInfo').innerHTML =
                     `共 <b>${data.total}</b> 条${levelInfo} | 查询 ${data.query_time}秒 ${badge}`;
-                document.getElementById('timestamp')?.remove();
 
                 renderTable(currentEvents);
                 renderPagination();
