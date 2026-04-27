@@ -54,26 +54,29 @@
         }
         .main-content { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
         .toolbar {
-            background: #fff; padding: 10px 16px; border-bottom: 1px solid #e0e0e0;
-            display: flex; align-items: center; gap: 10px;
+            background: #fff; padding: 8px 16px; border-bottom: 1px solid #e0e0e0;
+            display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
         }
-        .toolbar h3 { font-size: 14px; color: #333; min-width: 120px; }
+        .toolbar-row { display: flex; align-items: center; gap: 8px; width: 100%; }
+        .toolbar h3 { font-size: 14px; color: #333; min-width: 120px; white-space: nowrap; }
         .search-box {
             padding: 5px 10px; border: 1px solid #ddd; border-radius: 4px;
-            font-size: 12px; width: 200px;
+            font-size: 12px; width: 180px;
         }
-        .search-btn {
-            padding: 5px 12px; background: #1a73e8; color: white; border: none;
-            border-radius: 4px; cursor: pointer; font-size: 12px;
-        }
-        .refresh-btn {
+        .search-btn, .refresh-btn {
             padding: 5px 10px; border: 1px solid #ddd; border-radius: 4px;
-            background: #fff; cursor: pointer; font-size: 12px;
+            background: #fff; cursor: pointer; font-size: 12px; white-space: nowrap;
         }
-        .field-selector { display: flex; gap: 6px; flex-wrap: wrap; flex: 1; }
+        .search-btn { background: #1a73e8; color: white; border-color: #1a73e8; }
+        .level-filter {
+            padding: 5px 8px; border: 1px solid #ddd; border-radius: 4px;
+            font-size: 12px; cursor: pointer; background: #fff; white-space: nowrap;
+        }
+        .field-selector { display: flex; gap: 4px; flex-wrap: wrap; flex: 1; }
         .field-checkbox {
             display: flex; align-items: center; gap: 3px; cursor: pointer;
             font-size: 11px; padding: 3px 6px; background: #f8f9fa; border-radius: 3px;
+            white-space: nowrap;
         }
         .content-area { flex: 1; overflow: auto; background: #fff; position: relative; }
         .event-table { width: 100%; border-collapse: collapse; font-size: 12px; }
@@ -153,9 +156,9 @@
                 <select class="category-select" id="categoryFilter" onchange="filterByCategory()">
                     <option value="all"> 全部类型</option>
                     <option value="安全日志">🔒 安全日志</option>
-                    <option value="系统日志">⚙️ 系统日志</option>
+                    <option value="系统日志">️ 系统日志</option>
                     <option value="应用程序日志">📦 应用程序日志</option>
-                    <option value="Setup日志">🔧 Setup日志</option>
+                    <option value="Setup日志"> Setup日志</option>
                     <option value="其他日志">📄 其他日志</option>
                 </select>
             </div>
@@ -166,11 +169,23 @@
 
         <div class="main-content">
             <div class="toolbar">
-                <h3 id="currentFile">请选择文件</h3>
-                <input class="search-box" id="searchBox" placeholder="搜索事件ID/提供程序/消息..." onkeydown="if(event.key==='Enter')doSearch()">
-                <button class="search-btn" onclick="doSearch()">🔍</button>
-                <button class="refresh-btn" onclick="rebuildDb()" title="重新构建数据库"> 重建</button>
-                <div class="field-selector" id="fieldSelector"></div>
+                <div class="toolbar-row">
+                    <h3 id="currentFile">请选择文件</h3>
+                    <input class="search-box" id="searchBox" placeholder="搜索事件ID/提供程序/消息..." onkeydown="if(event.key==='Enter')doSearch()">
+                    <button class="search-btn" onclick="doSearch()">🔍 搜索</button>
+                    <select class="level-filter" id="levelFilter" onchange="applyLevelFilter()">
+                        <option value="">全部级别</option>
+                        <option value="严重">🔴 严重</option>
+                        <option value="错误"> 错误</option>
+                        <option value="警告">🟡 警告</option>
+                        <option value="信息">🟢 信息</option>
+                        <option value="详细"> 详细</option>
+                    </select>
+                    <button class="refresh-btn" onclick="rebuildDb()" title="强制重新构建数据库"> 重建</button>
+                </div>
+                <div class="toolbar-row">
+                    <div class="field-selector" id="fieldSelector"></div>
+                </div>
             </div>
 
             <div class="content-area" id="contentArea">
@@ -199,6 +214,7 @@
         let selectedFields = new Set();
         let isSearching = false;
         let searchKeyword = '';
+        let selectedLevel = '';
 
         async function loadFiles() {
             try {
@@ -252,12 +268,20 @@
             renderTable(currentEvents);
         }
 
+        function applyLevelFilter() {
+            selectedLevel = document.getElementById('levelFilter').value;
+            currentPage = 1;
+            loadEvents(1);
+        }
+
         async function selectFile(filename) {
             currentFile = filename;
             currentPage = 1;
             isSearching = false;
             searchKeyword = '';
+            selectedLevel = '';
             document.getElementById('searchBox').value = '';
+            document.getElementById('levelFilter').value = '';
 
             document.querySelectorAll('.file-item').forEach(el => {
                 el.classList.toggle('active', el.dataset.filename === filename);
@@ -272,9 +296,14 @@
             showLoading('加载中...');
 
             try {
-                const url = isSearching
+                let url = isSearching
                     ? `/api/search?filename=${encodeURIComponent(currentFile)}&keyword=${encodeURIComponent(searchKeyword)}&page=${page}`
                     : `/api/events?filename=${encodeURIComponent(currentFile)}&page=${page}`;
+                
+                if (selectedLevel) {
+                    url += `&levels=${encodeURIComponent(selectedLevel)}`;
+                }
+
                 const res = await fetch(url);
                 const data = await res.json();
 
@@ -288,8 +317,9 @@
                 currentEvents = data.events || [];
 
                 const badge = data.from_cache ? '<span class="cache-badge">⚡ 毫秒级</span>' : '';
+                const levelInfo = selectedLevel ? ` | 级别: ${selectedLevel}` : '';
                 document.getElementById('statsInfo').innerHTML =
-                    `共 <b>${data.total}</b> 条 | 查询 ${data.query_time}秒 ${badge}`;
+                    `共 <b>${data.total}</b> 条${levelInfo} | 查询 ${data.query_time}秒 ${badge}`;
                 document.getElementById('timestamp')?.remove();
 
                 renderTable(currentEvents);
@@ -347,9 +377,9 @@
             if (!currentFile) return;
             showLoading('正在重新构建数据库...');
             try {
-                const res = await fetch(`/api/build?filename=${encodeURIComponent(currentFile)}`);
+                const res = await fetch(`/api/build?filename=${encodeURIComponent(currentFile)}&force=true`);
                 const data = await res.json();
-                if (data.status === 'building') {
+                if (data.status === 'building' || data.status === 'started') {
                     showLoading('数据库构建中，请稍候...');
                     await pollBuildStatus();
                 }

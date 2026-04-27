@@ -160,9 +160,6 @@ class EvtxParser:
         """
         # 先初始化数据库（创建表结构）
         conn = init_db(self.db_path)
-        c = conn.cursor()
-        c.execute("DELETE FROM events")
-        conn.commit()
         conn.close()
 
         print(f"[{os.path.basename(self.evtx_path)}] 开始解析...")
@@ -212,6 +209,12 @@ class EvtxParser:
         if parsed_records:
             self._insert_batch_to_db(parsed_records)
 
+        # 执行WAL checkpoint，确保数据从WAL文件刷入主数据库文件
+        # 这样后续的只读查询连接才能看到数据
+        checkpoint_conn = sqlite3.connect(self.db_path)
+        checkpoint_conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        checkpoint_conn.close()
+
         conn = sqlite3.connect(self.db_path)
         total = conn.execute("SELECT COUNT(*) FROM events").fetchone()[0]
         conn.close()
@@ -240,7 +243,29 @@ class EvtxParser:
         确保数据库是最新的，如果需要则构建
         返回: 事件数量
         """
-        if evtx_needs_update(self.evtx_path, self.db_path):
+        needs_rebuild = False
+        
+        if not os.path.exists(self.db_path):
+            needs_rebuild = True
+        else:
+            try:
+                conn = sqlite3.connect(self.db_path)
+                columns = [row[1] for row in conn.execute("PRAGMA table_info(events)").fetchall()]
+                total = conn.execute("SELECT COUNT(*) FROM events").fetchone()[0]
+                conn.close()
+                
+                if 'raw_xml' in columns:
+                    needs_rebuild = True
+                elif total == 0:
+                    needs_rebuild = True
+                elif evtx_needs_update(self.evtx_path, self.db_path):
+                    needs_rebuild = True
+            except Exception:
+                needs_rebuild = True
+        
+        if needs_rebuild:
+            if os.path.exists(self.db_path):
+                os.remove(self.db_path)
             return self._build_db(use_multiprocess)
         else:
             conn = sqlite3.connect(self.db_path)
@@ -248,21 +273,29 @@ class EvtxParser:
             conn.close()
             return total
 
-    def query(self, page: int = 1, page_size: int = 200) -> Dict[str, Any]:
+    def query(self, page: int = 1, page_size: int = 200, levels: List[str] = None) -> Dict[str, Any]:
         """
-        从数据库查询事件（分页）
+        从数据库查询事件（分页，支持级别过滤）
         """
         self.ensure_db()
         conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row
         c = conn.cursor()
 
-        total = c.execute("SELECT COUNT(*) FROM events").fetchone()[0]
+        # 构建 WHERE 条件
+        where_clause = ""
+        params = ()
+        if levels:
+            placeholders = ','.join(['?'] * len(levels))
+            where_clause = f" WHERE level IN ({placeholders})"
+            params = tuple(levels)
+
+        total = c.execute(f"SELECT COUNT(*) FROM events{where_clause}", params).fetchone()[0]
         offset = (page - 1) * page_size
 
         rows = c.execute(
-            "SELECT * FROM events ORDER BY id LIMIT ? OFFSET ?",
-            (page_size, offset)
+            f"SELECT * FROM events{where_clause} ORDER BY id LIMIT ? OFFSET ?",
+            params + (page_size, offset)
         ).fetchall()
 
         events = []
@@ -290,24 +323,32 @@ class EvtxParser:
             'events': events
         }
 
-    def search(self, keyword: str, page: int = 1, page_size: int = 200) -> Dict[str, Any]:
-        """搜索事件"""
+    def search(self, keyword: str, page: int = 1, page_size: int = 200, levels: List[str] = None) -> Dict[str, Any]:
+        """搜索事件，支持级别过滤"""
         self.ensure_db()
         conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row
         c = conn.cursor()
 
         like = f'%{keyword}%'
+        # 构建 WHERE 条件
+        base_where = "WHERE event_id LIKE ? OR provider LIKE ? OR message LIKE ?"
+        params = [like, like, like]
+        
+        if levels:
+            placeholders = ','.join(['?'] * len(levels))
+            base_where += f" AND level IN ({placeholders})"
+            params.extend(levels)
+
         total = c.execute(
-            "SELECT COUNT(*) FROM events WHERE event_id LIKE ? OR provider LIKE ? OR message LIKE ?",
-            (like, like, like)
+            f"SELECT COUNT(*) FROM events {base_where}", params
         ).fetchone()[0]
         offset = (page - 1) * page_size
 
-        rows = c.execute('''
-            SELECT * FROM events WHERE event_id LIKE ? OR provider LIKE ? OR message LIKE ?
-            ORDER BY id LIMIT ? OFFSET ?
-        ''', (like, like, like, page_size, offset)).fetchall()
+        rows = c.execute(
+            f"SELECT * FROM events {base_where} ORDER BY id LIMIT ? OFFSET ?",
+            params + [page_size, offset]
+        ).fetchall()
 
         events = []
         for row in rows:

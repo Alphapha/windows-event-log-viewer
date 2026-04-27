@@ -45,11 +45,13 @@ def get_files():
 @app.route('/api/events')
 def get_events():
     """
-    从SQLite查询事件（分页）
+    从SQLite查询事件（分页，支持级别过滤）
     """
     filename = request.args.get('filename')
     page = int(request.args.get('page', 1))
     page_size = int(request.args.get('page_size', PAGE_SIZE))
+    levels_param = request.args.get('levels', '')
+    levels = [l for l in levels_param.split(',') if l] if levels_param else None
     
     if not filename:
         return jsonify({'status': 'error', 'message': '请提供文件名'}), 400
@@ -60,7 +62,7 @@ def get_events():
     
     start_time = time.time()
     parser = EvtxParser(filepath)
-    result = parser.query(page=page, page_size=page_size)
+    result = parser.query(page=page, page_size=page_size, levels=levels)
     elapsed = time.time() - start_time
     
     return jsonify({
@@ -73,11 +75,13 @@ def get_events():
 
 @app.route('/api/search')
 def search_events():
-    """搜索事件"""
+    """搜索事件，支持级别过滤"""
     filename = request.args.get('filename')
     keyword = request.args.get('keyword', '')
     page = int(request.args.get('page', 1))
     page_size = int(request.args.get('page_size', PAGE_SIZE))
+    levels_param = request.args.get('levels', '')
+    levels = [l for l in levels_param.split(',') if l] if levels_param else None
     
     if not filename or not keyword:
         return jsonify({'status': 'error', 'message': '请提供文件名和搜索关键词'}), 400
@@ -87,7 +91,7 @@ def search_events():
         return jsonify({'status': 'error', 'message': f'文件不存在: {filename}'}), 404
     
     parser = EvtxParser(filepath)
-    result = parser.search(keyword=keyword, page=page, page_size=page_size)
+    result = parser.search(keyword=keyword, page=page, page_size=page_size, levels=levels)
     
     return jsonify({
         'status': 'success',
@@ -99,6 +103,7 @@ def search_events():
 def build_db():
     """后台构建数据库"""
     filename = request.args.get('filename')
+    force = request.args.get('force', 'false').lower() == 'true'
     if not filename:
         return jsonify({'status': 'error', 'message': '请提供文件名'}), 400
     
@@ -112,6 +117,10 @@ def build_db():
     def do_build():
         try:
             parser = EvtxParser(filepath)
+            if force:
+                # 强制重建：删除旧数据库
+                if os.path.exists(parser.db_path):
+                    os.remove(parser.db_path)
             parser.ensure_db()
         except Exception as e:
             print(f"构建失败: {e}")
