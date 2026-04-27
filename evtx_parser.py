@@ -56,13 +56,14 @@ def init_db(db_path: str):
             computer TEXT,
             user_id TEXT,
             message TEXT,
-            event_data TEXT,
-            raw_xml TEXT
+            event_data TEXT
         );
         CREATE INDEX IF NOT EXISTS idx_event_id ON events(event_id);
         CREATE INDEX IF NOT EXISTS idx_time_created ON events(time_created);
         CREATE INDEX IF NOT EXISTS idx_level ON events(level);
         CREATE INDEX IF NOT EXISTS idx_provider ON events(provider);
+        PRAGMA journal_mode=WAL;
+        PRAGMA synchronous=NORMAL;
     ''')
     conn.commit()
     return conn
@@ -219,13 +220,18 @@ class EvtxParser:
         return total
 
     def _insert_batch_to_db(self, batch):
-        """批量插入数据到SQLite（在主进程执行）"""
+        """批量插入数据到SQLite（在主进程执行，不包含RawXML以节省空间）"""
+        batch_no_xml = []
+        for item in batch:
+            item_copy = {k: v for k, v in item.items() if k != 'RawXML'}
+            batch_no_xml.append(item_copy)
+
         conn = sqlite3.connect(self.db_path)
         c = conn.cursor()
         c.executemany('''
-            INSERT INTO events (record_id, event_id, time_created, level, provider, channel, computer, user_id, message, event_data, raw_xml)
-            VALUES (:RecordID, :EventID, :TimeCreated, :Level, :Provider, :Channel, :Computer, :UserID, :Message, :EventData, :RawXML)
-        ''', batch)
+            INSERT INTO events (record_id, event_id, time_created, level, provider, channel, computer, user_id, message, event_data)
+            VALUES (:RecordID, :EventID, :TimeCreated, :Level, :Provider, :Channel, :Computer, :UserID, :Message, :EventData)
+        ''', batch_no_xml)
         conn.commit()
         conn.close()
 
@@ -272,7 +278,7 @@ class EvtxParser:
                 'UserID': row['user_id'] or '',
                 'Message': row['message'] or '',
                 'EventData': json.loads(row['event_data']) if row['event_data'] else {},
-                'RawXML': row['raw_xml'] or ''
+                'RawXML': ''
             })
 
         conn.close()
@@ -316,7 +322,7 @@ class EvtxParser:
                 'UserID': row['user_id'] or '',
                 'Message': row['message'] or '',
                 'EventData': json.loads(row['event_data']) if row['event_data'] else {},
-                'RawXML': row['raw_xml'] or ''
+                'RawXML': ''
             })
 
         conn.close()
