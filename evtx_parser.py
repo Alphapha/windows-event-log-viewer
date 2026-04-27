@@ -307,9 +307,9 @@ class EvtxParser:
             conn.close()
             return total
 
-    def query(self, page: int = 1, page_size: int = 200, levels: List[str] = None) -> Dict[str, Any]:
+    def query(self, page: int = 1, page_size: int = 200, levels: List[str] = None, time_range: int = None, time_from: str = None, time_to: str = None, sort_order: str = 'desc') -> Dict[str, Any]:
         """
-        从数据库查询事件（分页，支持级别过滤）
+        从数据库查询事件（分页，支持级别过滤、时间过滤、排序）
         """
         self.ensure_db()
         conn = sqlite3.connect(self.db_path)
@@ -317,19 +317,47 @@ class EvtxParser:
         c = conn.cursor()
 
         # 构建 WHERE 条件
-        where_clause = ""
-        params = ()
-        if levels:
-            placeholders = ','.join(['?'] * len(levels))
-            where_clause = f" WHERE level IN ({placeholders})"
-            params = tuple(levels)
+        where_parts = []
+        params = []
 
+        # 级别过滤
+        if levels:
+            placeholders = ','.join(['?' for _ in levels])
+            where_parts.append(f"level IN ({placeholders})")
+            params.extend(levels)
+
+        # 时间范围过滤
+        if time_range is not None and time_range >= 0:
+            from datetime import datetime, timedelta
+            now = datetime.now()
+            if time_range == 0:  # 今天
+                start_date = now.replace(hour=0, minute=0, second=0, microsecond=0)
+            else:
+                start_date = now - timedelta(days=time_range)
+            start_str = start_date.strftime('%Y-%m-%d %H:%M:%S')
+            where_parts.append("time_created >= ?")
+            params.append(start_str)
+        elif time_from or time_to:
+            if time_from:
+                where_parts.append("time_created >= ?")
+                params.append(time_from)
+            if time_to:
+                where_parts.append("time_created <= ?")
+                params.append(time_to)
+
+        where_clause = " WHERE " + " AND ".join(where_parts) if where_parts else ""
+
+        # 统计总数
         total = c.execute(f"SELECT COUNT(*) FROM events{where_clause}", params).fetchone()[0]
         offset = (page - 1) * page_size
 
+        # 排序方向
+        order_direction = "DESC" if sort_order.lower() == 'desc' else "ASC"
+
+        # 查询数据
         rows = c.execute(
-            f"SELECT * FROM events{where_clause} ORDER BY id LIMIT ? OFFSET ?",
-            params + (page_size, offset)
+            f"SELECT * FROM events{where_clause} ORDER BY time_created {order_direction} LIMIT ? OFFSET ?",
+            params + [page_size, offset]
         ).fetchall()
 
         events = []
@@ -357,8 +385,8 @@ class EvtxParser:
             'events': events
         }
 
-    def search(self, keyword: str, page: int = 1, page_size: int = 200, levels: List[str] = None) -> Dict[str, Any]:
-        """搜索事件，支持级别过滤"""
+    def search(self, keyword: str, page: int = 1, page_size: int = 200, levels: List[str] = None, time_range: int = None, time_from: str = None, time_to: str = None, sort_order: str = 'desc') -> Dict[str, Any]:
+        """搜索事件，支持级别过滤、时间过滤、排序"""
         self.ensure_db()
         conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row
@@ -369,18 +397,41 @@ class EvtxParser:
         base_where = "WHERE event_id LIKE ? OR provider LIKE ? OR message LIKE ?"
         params = [like, like, like]
         
+        # 级别过滤
         if levels:
-            placeholders = ','.join(['?'] * len(levels))
+            placeholders = ','.join(['?' for _ in levels])
             base_where += f" AND level IN ({placeholders})"
             params.extend(levels)
+
+        # 时间范围过滤
+        if time_range is not None and time_range >= 0:
+            from datetime import datetime, timedelta
+            now = datetime.now()
+            if time_range == 0:  # 今天
+                start_date = now.replace(hour=0, minute=0, second=0, microsecond=0)
+            else:
+                start_date = now - timedelta(days=time_range)
+            start_str = start_date.strftime('%Y-%m-%d %H:%M:%S')
+            base_where += " AND time_created >= ?"
+            params.append(start_str)
+        elif time_from or time_to:
+            if time_from:
+                base_where += " AND time_created >= ?"
+                params.append(time_from)
+            if time_to:
+                base_where += " AND time_created <= ?"
+                params.append(time_to)
 
         total = c.execute(
             f"SELECT COUNT(*) FROM events {base_where}", params
         ).fetchone()[0]
         offset = (page - 1) * page_size
 
+        # 排序方向
+        order_direction = "DESC" if sort_order.lower() == 'desc' else "ASC"
+
         rows = c.execute(
-            f"SELECT * FROM events {base_where} ORDER BY id LIMIT ? OFFSET ?",
+            f"SELECT * FROM events {base_where} ORDER BY time_created {order_direction} LIMIT ? OFFSET ?",
             params + [page_size, offset]
         ).fetchall()
 

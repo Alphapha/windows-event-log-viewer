@@ -45,13 +45,21 @@ def get_files():
 @app.route('/api/events')
 def get_events():
     """
-    从SQLite查询事件（分页，支持级别过滤）
+    从SQLite查询事件（分页，支持级别过滤、时间过滤、排序）
     """
     filename = request.args.get('filename')
     page = int(request.args.get('page', 1))
     page_size = int(request.args.get('page_size', PAGE_SIZE))
     levels_param = request.args.get('levels', '')
     levels = [l for l in levels_param.split(',') if l] if levels_param else None
+    
+    time_range_param = request.args.get('time_range')
+    time_range = int(time_range_param) if time_range_param is not None else None
+    
+    time_from = request.args.get('time_from', '')
+    time_to = request.args.get('time_to', '')
+    
+    sort_order = request.args.get('sort_order', 'desc')
     
     if not filename:
         return jsonify({'status': 'error', 'message': '请提供文件名'}), 400
@@ -62,7 +70,9 @@ def get_events():
     
     start_time = time.time()
     parser = EvtxParser(filepath)
-    result = parser.query(page=page, page_size=page_size, levels=levels)
+    result = parser.query(page=page, page_size=page_size, levels=levels, 
+                         time_range=time_range, time_from=time_from if time_from else None,
+                         time_to=time_to if time_to else None, sort_order=sort_order)
     elapsed = time.time() - start_time
     
     return jsonify({
@@ -75,13 +85,21 @@ def get_events():
 
 @app.route('/api/search')
 def search_events():
-    """搜索事件，支持级别过滤"""
+    """搜索事件，支持级别过滤、时间过滤、排序"""
     filename = request.args.get('filename')
     keyword = request.args.get('keyword', '')
     page = int(request.args.get('page', 1))
     page_size = int(request.args.get('page_size', PAGE_SIZE))
     levels_param = request.args.get('levels', '')
     levels = [l for l in levels_param.split(',') if l] if levels_param else None
+    
+    time_range_param = request.args.get('time_range')
+    time_range = int(time_range_param) if time_range_param is not None else None
+    
+    time_from = request.args.get('time_from', '')
+    time_to = request.args.get('time_to', '')
+    
+    sort_order = request.args.get('sort_order', 'desc')
     
     if not filename or not keyword:
         return jsonify({'status': 'error', 'message': '请提供文件名和搜索关键词'}), 400
@@ -91,7 +109,9 @@ def search_events():
         return jsonify({'status': 'error', 'message': f'文件不存在: {filename}'}), 404
     
     parser = EvtxParser(filepath)
-    result = parser.search(keyword=keyword, page=page, page_size=page_size, levels=levels)
+    result = parser.search(keyword=keyword, page=page, page_size=page_size, levels=levels,
+                          time_range=time_range, time_from=time_from if time_from else None,
+                          time_to=time_to if time_to else None, sort_order=sort_order)
     
     return jsonify({
         'status': 'success',
