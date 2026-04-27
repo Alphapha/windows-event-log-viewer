@@ -171,15 +171,26 @@ def build_status():
 
 @app.route('/api/fields')
 def get_fields():
-    """获取可用的字段列表"""
+    """获取可用的字段列表（包含所有EVTX System字段）"""
     fields = [
         {'id': 'RecordID', 'name': '记录ID', 'default': True},
         {'id': 'EventID', 'name': '事件ID', 'default': True},
-        {'id': 'TimeCreated', 'name': '创建时间', 'default': True},
+        {'id': 'Version', 'name': '版本', 'default': False},
         {'id': 'Level', 'name': '级别', 'default': True},
+        {'id': 'Task', 'name': '任务', 'default': False},
+        {'id': 'Opcode', 'name': '操作码', 'default': False},
+        {'id': 'Keywords', 'name': '关键字', 'default': False},
+        {'id': 'TimeCreated', 'name': '创建时间', 'default': True},
+        {'id': 'TimeCreatedRaw', 'name': '原始时间', 'default': False},
+        {'id': 'EventRecordID', 'name': '事件记录ID', 'default': False},
+        {'id': 'CorrelationActivityID', 'name': '关联活动ID', 'default': False},
+        {'id': 'CorrelationRelatedActivityID', 'name': '关联相关活动ID', 'default': False},
+        {'id': 'ExecutionProcessID', 'name': '进程ID', 'default': False},
+        {'id': 'ExecutionThreadID', 'name': '线程ID', 'default': False},
         {'id': 'Provider', 'name': '提供程序', 'default': True},
-        {'id': 'Channel', 'name': '通道', 'default': False},
-        {'id': 'Computer', 'name': '计算机', 'default': False},
+        {'id': 'ProviderGUID', 'name': '提供程序GUID', 'default': False},
+        {'id': 'Channel', 'name': '通道', 'default': True},
+        {'id': 'Computer', 'name': '计算机', 'default': True},
         {'id': 'UserID', 'name': '用户ID', 'default': False},
         {'id': 'Message', 'name': '消息', 'default': True},
         {'id': 'EventData', 'name': '事件数据', 'default': False},

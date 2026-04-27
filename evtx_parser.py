@@ -49,9 +49,21 @@ def init_db(db_path: str):
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             record_id TEXT,
             event_id TEXT,
-            time_created TEXT,
+            version TEXT,
             level TEXT,
+            level_text TEXT,
+            task TEXT,
+            opcode TEXT,
+            keywords TEXT,
+            time_created TEXT,
+            time_created_raw TEXT,
+            event_record_id TEXT,
+            correlation_activity_id TEXT,
+            correlation_related_activity_id TEXT,
+            execution_process_id TEXT,
+            execution_thread_id TEXT,
             provider TEXT,
+            provider_guid TEXT,
             channel TEXT,
             computer TEXT,
             user_id TEXT,
@@ -104,19 +116,29 @@ def parse_single_record(args):
             return elem.get(attr, '') if elem is not None else ''
 
         time_created = ''
+        time_created_raw = ''
         tc = system.find(f'{{{NS}}}TimeCreated')
         if tc is not None:
             utc_time = tc.get('SystemTime')
             if utc_time:
+                time_created_raw = utc_time
                 try:
                     dt = datetime.fromisoformat(utc_time.replace('Z', '+00:00'))
                     time_created = dt.strftime('%Y-%m-%d %H:%M:%S')
                 except Exception:
                     pass
 
-        level_map = {'1': '严重', '2': '错误', '3': '警告', '4': '信息', '5': '详细'}
-        level_elem = system.find(f'{{{NS}}}Level')
-        level = level_map.get(level_elem.text, level_elem.text) if level_elem is not None else ''
+        level_map = {'0': '', '1': '严重', '2': '错误', '3': '警告', '4': '信息', '5': '详细'}
+        level_raw = find_text('Level')
+        level = level_map.get(level_raw, level_raw)
+
+        correlation = system.find(f'{{{NS}}}Correlation')
+        corr_activity_id = correlation.get('ActivityID', '') if correlation is not None else ''
+        corr_related_activity_id = correlation.get('RelatedActivityID', '') if correlation is not None else ''
+
+        execution = system.find(f'{{{NS}}}Execution')
+        exec_process_id = execution.get('ProcessID', '') if execution is not None else ''
+        exec_thread_id = execution.get('ThreadID', '') if execution is not None else ''
 
         event_data = {}
         event_data_elem = root.find(f'.//{{{NS}}}EventData')
@@ -129,16 +151,36 @@ def parse_single_record(args):
                 else:
                     event_data[f'Data_{len(event_data)}'] = value
 
+        rendering_info = root.find(f'.//{{{NS}}}RenderingInfo')
+        message = ''
+        if rendering_info is not None:
+            msg_elem = rendering_info.find(f'{{{NS}}}Message')
+            message = msg_elem.text or '' if msg_elem is not None else ''
+        if not message:
+            message = find_text('Message')
+
         return {
             'RecordID': find_text('EventRecordID'),
             'EventID': find_text('EventID'),
-            'TimeCreated': time_created,
+            'Version': find_text('Version'),
             'Level': level,
+            'LevelText': level_raw,
+            'Task': find_text('Task'),
+            'Opcode': find_text('Opcode'),
+            'Keywords': find_text('Keywords'),
+            'TimeCreated': time_created,
+            'TimeCreatedRaw': time_created_raw,
+            'EventRecordID': find_text('EventRecordID'),
+            'CorrelationActivityID': corr_activity_id,
+            'CorrelationRelatedActivityID': corr_related_activity_id,
+            'ExecutionProcessID': exec_process_id,
+            'ExecutionThreadID': exec_thread_id,
             'Provider': find_attr('Provider', 'Name'),
+            'ProviderGUID': find_attr('Provider', 'Guid'),
             'Channel': find_text('Channel'),
             'Computer': find_text('Computer'),
             'UserID': (system.find(f'{{{NS}}}Security') or {}).get('UserID', ''),
-            'Message': find_text('Message'),
+            'Message': message,
             'EventData': json.dumps(event_data, ensure_ascii=False) if event_data else '',
             'RawXML': xml_string
         }
@@ -257,8 +299,20 @@ class EvtxParser:
             item_copy = {k: v for k, v in item.items() if k != 'RawXML'}
             batch_no_xml.append(item_copy)
         cursor.executemany('''
-            INSERT INTO events (record_id, event_id, time_created, level, provider, channel, computer, user_id, message, event_data)
-            VALUES (:RecordID, :EventID, :TimeCreated, :Level, :Provider, :Channel, :Computer, :UserID, :Message, :EventData)
+            INSERT INTO events (
+                record_id, event_id, version, level, level_text, task, opcode, keywords,
+                time_created, time_created_raw, event_record_id,
+                correlation_activity_id, correlation_related_activity_id,
+                execution_process_id, execution_thread_id,
+                provider, provider_guid, channel, computer, user_id, message, event_data
+            )
+            VALUES (
+                :RecordID, :EventID, :Version, :Level, :LevelText, :Task, :Opcode, :Keywords,
+                :TimeCreated, :TimeCreatedRaw, :EventRecordID,
+                :CorrelationActivityID, :CorrelationRelatedActivityID,
+                :ExecutionProcessID, :ExecutionThreadID,
+                :Provider, :ProviderGUID, :Channel, :Computer, :UserID, :Message, :EventData
+            )
         ''', batch_no_xml)
 
     def ensure_db(self, use_multiprocess: bool = True) -> int:
@@ -365,9 +419,21 @@ class EvtxParser:
             events.append({
                 'RecordID': row['record_id'] or '',
                 'EventID': row['event_id'] or '',
-                'TimeCreated': row['time_created'] or '',
+                'Version': row['version'] or '',
                 'Level': row['level'] or '',
+                'LevelText': row['level_text'] or '',
+                'Task': row['task'] or '',
+                'Opcode': row['opcode'] or '',
+                'Keywords': row['keywords'] or '',
+                'TimeCreated': row['time_created'] or '',
+                'TimeCreatedRaw': row['time_created_raw'] or '',
+                'EventRecordID': row['event_record_id'] or '',
+                'CorrelationActivityID': row['correlation_activity_id'] or '',
+                'CorrelationRelatedActivityID': row['correlation_related_activity_id'] or '',
+                'ExecutionProcessID': row['execution_process_id'] or '',
+                'ExecutionThreadID': row['execution_thread_id'] or '',
                 'Provider': row['provider'] or '',
+                'ProviderGUID': row['provider_guid'] or '',
                 'Channel': row['channel'] or '',
                 'Computer': row['computer'] or '',
                 'UserID': row['user_id'] or '',
@@ -440,9 +506,21 @@ class EvtxParser:
             events.append({
                 'RecordID': row['record_id'] or '',
                 'EventID': row['event_id'] or '',
-                'TimeCreated': row['time_created'] or '',
+                'Version': row['version'] or '',
                 'Level': row['level'] or '',
+                'LevelText': row['level_text'] or '',
+                'Task': row['task'] or '',
+                'Opcode': row['opcode'] or '',
+                'Keywords': row['keywords'] or '',
+                'TimeCreated': row['time_created'] or '',
+                'TimeCreatedRaw': row['time_created_raw'] or '',
+                'EventRecordID': row['event_record_id'] or '',
+                'CorrelationActivityID': row['correlation_activity_id'] or '',
+                'CorrelationRelatedActivityID': row['correlation_related_activity_id'] or '',
+                'ExecutionProcessID': row['execution_process_id'] or '',
+                'ExecutionThreadID': row['execution_thread_id'] or '',
                 'Provider': row['provider'] or '',
+                'ProviderGUID': row['provider_guid'] or '',
                 'Channel': row['channel'] or '',
                 'Computer': row['computer'] or '',
                 'UserID': row['user_id'] or '',

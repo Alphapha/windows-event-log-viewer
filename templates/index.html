@@ -71,21 +71,21 @@
         .level-chips { display: flex; gap: 4px; align-items: center; flex-wrap: wrap; }
         .level-chip {
             padding: 3px 10px; border-radius: 12px; font-size: 11px; cursor: pointer;
-            border: 1px solid #ddd; background: #fff; white-space: nowrap;
-            transition: all 0.15s; user-select: none;
+            border: 1px solid #ddd; background: #fff; color: #5f6368;
+            transition: all 0.15s; user-select: none; white-space: nowrap;
         }
-        .level-chip:hover { opacity: 0.8; }
-        .level-chip.active { color: white; }
+        .level-chip:hover { background: #e8eaed; }
+        .level-chip[data-level="全部"].active { background: #5f6368; color: white; border-color: #5f6368; }
         .level-chip[data-level="严重"] { border-color: #d93025; color: #d93025; }
-        .level-chip[data-level="严重"].active { background: #d93025; }
+        .level-chip[data-level="严重"].active { background: #d93025; color: white; }
         .level-chip[data-level="错误"] { border-color: #ea8600; color: #ea8600; }
-        .level-chip[data-level="错误"].active { background: #ea8600; }
-        .level-chip[data-level="警告"] { border-color: #f9ab00; color: #f9ab00; }
+        .level-chip[data-level="错误"].active { background: #ea8600; color: white; }
+        .level-chip[data-level="警告"] { border-color: #f9ab00; color: #c79100; }
         .level-chip[data-level="警告"].active { background: #f9ab00; color: #333; }
         .level-chip[data-level="信息"] { border-color: #1e8e3e; color: #1e8e3e; }
-        .level-chip[data-level="信息"].active { background: #1e8e3e; }
+        .level-chip[data-level="信息"].active { background: #1e8e3e; color: white; }
         .level-chip[data-level="详细"] { border-color: #1a73e8; color: #1a73e8; }
-        .level-chip[data-level="详细"].active { background: #1a73e8; }
+        .level-chip[data-level="详细"].active { background: #1a73e8; color: white; }
         .time-filter-group { display: flex; gap: 4px; align-items: center; flex-wrap: wrap; }
         .time-chip {
             padding: 3px 10px; border-radius: 12px; font-size: 11px; cursor: pointer;
