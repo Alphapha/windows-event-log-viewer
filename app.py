@@ -1,18 +1,22 @@
 """
 Windows事件日志查看器 - Flask Web服务器
-提供Web界面查看Windows事件日志
+提供Web界面查看Windows事件日志，支持SQLite预处理、分页、缓存
 """
 from flask import Flask, render_template, jsonify, request
 from dotenv import load_dotenv
-from evtx_parser import EvtxParser, get_evtx_files, get_evtx_categories
+from evtx_parser import EvtxParser, get_evtx_categories
 import os
 import time
+import threading
 
 load_dotenv()
 
 app = Flask(__name__)
 
 EVTX_DIRECTORY = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'evtx')
+PAGE_SIZE = 200
+
+prebuild_threads = {}
 
 @app.route('/')
 def index():
@@ -23,44 +27,110 @@ def index():
 def get_files():
     """获取所有EVTX文件列表（按类别分组）"""
     categories = get_evtx_categories(EVTX_DIRECTORY)
-    return jsonify({
-        'status': 'success',
-        'categories': categories
-    })
+    result = {'status': 'success', 'categories': {}}
+    
+    for category, files in categories.items():
+        result['categories'][category] = []
+        for f in files:
+            db_path = os.path.join(os.path.dirname(f['filepath']), 'db', 
+                                   f"{os.path.splitext(f['filename'])[0]}.db")
+            db_exists = os.path.exists(db_path)
+            result['categories'][category].append({
+                **f,
+                'db_ready': db_exists
+            })
+    
+    return jsonify(result)
 
 @app.route('/api/events')
 def get_events():
-    """获取指定EVTX文件的事件列表"""
+    """
+    从SQLite查询事件（分页）
+    """
     filename = request.args.get('filename')
-    force_refresh = request.args.get('refresh', 'false').lower() == 'true'
+    page = int(request.args.get('page', 1))
+    page_size = int(request.args.get('page_size', PAGE_SIZE))
     
     if not filename:
-        return jsonify({
-            'status': 'error',
-            'message': '请提供文件名'
-        }), 400
+        return jsonify({'status': 'error', 'message': '请提供文件名'}), 400
     
     filepath = os.path.join(EVTX_DIRECTORY, filename)
-    
     if not os.path.exists(filepath):
-        return jsonify({
-            'status': 'error',
-            'message': f'文件不存在: {filename}'
-        }), 404
+        return jsonify({'status': 'error', 'message': f'文件不存在: {filename}'}), 404
     
     start_time = time.time()
     parser = EvtxParser(filepath)
-    events = parser.parse(use_cache=not force_refresh)
-    elapsed_time = time.time() - start_time
+    result = parser.query(page=page, page_size=page_size)
+    elapsed = time.time() - start_time
     
     return jsonify({
         'status': 'success',
         'filename': filename,
-        'total': len(events),
-        'parse_time': round(elapsed_time, 2),
-        'from_cache': elapsed_time < 0.1,
-        'events': events
+        **result,
+        'query_time': round(elapsed, 4),
+        'from_cache': elapsed < 0.01
     })
+
+@app.route('/api/search')
+def search_events():
+    """搜索事件"""
+    filename = request.args.get('filename')
+    keyword = request.args.get('keyword', '')
+    page = int(request.args.get('page', 1))
+    page_size = int(request.args.get('page_size', PAGE_SIZE))
+    
+    if not filename or not keyword:
+        return jsonify({'status': 'error', 'message': '请提供文件名和搜索关键词'}), 400
+    
+    filepath = os.path.join(EVTX_DIRECTORY, filename)
+    if not os.path.exists(filepath):
+        return jsonify({'status': 'error', 'message': f'文件不存在: {filename}'}), 404
+    
+    parser = EvtxParser(filepath)
+    result = parser.search(keyword=keyword, page=page, page_size=page_size)
+    
+    return jsonify({
+        'status': 'success',
+        'filename': filename,
+        **result
+    })
+
+@app.route('/api/build')
+def build_db():
+    """后台构建数据库"""
+    filename = request.args.get('filename')
+    if not filename:
+        return jsonify({'status': 'error', 'message': '请提供文件名'}), 400
+    
+    filepath = os.path.join(EVTX_DIRECTORY, filename)
+    if not os.path.exists(filepath):
+        return jsonify({'status': 'error', 'message': f'文件不存在: {filename}'}), 404
+    
+    if filename in prebuild_threads:
+        return jsonify({'status': 'building', 'message': '正在构建中，请稍候'})
+    
+    def do_build():
+        try:
+            parser = EvtxParser(filepath)
+            parser.ensure_db()
+        except Exception as e:
+            print(f"构建失败: {e}")
+        finally:
+            if filename in prebuild_threads:
+                del prebuild_threads[filename]
+    
+    prebuild_threads[filename] = threading.Thread(target=do_build, daemon=True)
+    prebuild_threads[filename].start()
+    
+    return jsonify({'status': 'started', 'message': '开始构建数据库'})
+
+@app.route('/api/build/status')
+def build_status():
+    """查询构建状态"""
+    filename = request.args.get('filename')
+    if filename in prebuild_threads:
+        return jsonify({'status': 'building', 'progress': '正在构建...'})
+    return jsonify({'status': 'idle'})
 
 @app.route('/api/fields')
 def get_fields():
@@ -78,10 +148,7 @@ def get_fields():
         {'id': 'EventData', 'name': '事件数据', 'default': False},
         {'id': 'RawXML', 'name': '原始XML', 'default': False}
     ]
-    return jsonify({
-        'status': 'success',
-        'fields': fields
-    })
+    return jsonify({'status': 'success', 'fields': fields})
 
 if __name__ == '__main__':
     app.run(

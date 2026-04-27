@@ -5,338 +5,153 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Windows事件日志查看器</title>
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
+        * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-            background: #f5f5f5;
-            height: 100vh;
-            overflow: hidden;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #f0f2f5; height: 100vh; overflow: hidden;
         }
-
-        .container {
-            display: flex;
-            height: 100vh;
-        }
-
+        .container { display: flex; height: 100vh; }
         .sidebar {
-            width: 250px;
-            background: #fff;
-            border-right: 1px solid #e0e0e0;
-            display: flex;
-            flex-direction: column;
+            width: 260px; background: #fff; border-right: 1px solid #e0e0e0;
+            display: flex; flex-direction: column;
         }
-
         .sidebar-header {
-            padding: 20px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 16px 20px; background: linear-gradient(135deg, #1a73e8, #4285f4);
             color: white;
         }
-
-        .sidebar-header h2 {
-            font-size: 18px;
-            margin-bottom: 5px;
-        }
-
-        .sidebar-header p {
-            font-size: 12px;
-            opacity: 0.9;
-        }
-
+        .sidebar-header h2 { font-size: 16px; margin-bottom: 4px; }
+        .sidebar-header p { font-size: 11px; opacity: 0.85; }
         .category-filter {
-            padding: 10px;
-            border-bottom: 1px solid #e0e0e0;
-            background: #f8f9fa;
+            padding: 8px 12px; border-bottom: 1px solid #e0e0e0; background: #f8f9fa;
         }
-
         .category-select {
-            width: 100%;
-            padding: 8px 10px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            font-size: 13px;
-            cursor: pointer;
-            background: #fff;
+            width: 100%; padding: 6px 8px; border: 1px solid #ddd; border-radius: 4px;
+            font-size: 12px; cursor: pointer; background: #fff;
         }
-
-        .file-list {
-            flex: 1;
-            overflow-y: auto;
-            padding: 10px;
-        }
-
-        .category-group {
-            margin-bottom: 10px;
-        }
-
+        .file-list { flex: 1; overflow-y: auto; padding: 8px; }
+        .category-group { margin-bottom: 8px; }
         .category-title {
-            font-size: 12px;
-            color: #666;
-            padding: 5px 10px;
-            background: #e9ecef;
-            border-radius: 4px;
-            margin-bottom: 5px;
-            font-weight: 600;
+            font-size: 11px; color: #666; padding: 4px 8px; background: #e8eaed;
+            border-radius: 3px; margin-bottom: 4px; font-weight: 600;
+            text-transform: uppercase; letter-spacing: 0.5px;
         }
-
         .file-item {
-            padding: 10px 12px;
-            margin-bottom: 3px;
-            border-radius: 6px;
-            cursor: pointer;
-            transition: all 0.2s;
-            background: #fff;
-            border: 1px solid #f0f0f0;
+            padding: 8px 10px; margin-bottom: 2px; border-radius: 4px; cursor: pointer;
+            transition: all 0.15s; background: #fff; border: 1px solid transparent;
+            display: flex; justify-content: space-between; align-items: center;
         }
-
-        .file-item:hover {
-            background: #e9ecef;
-            transform: translateX(3px);
+        .file-item:hover { background: #e8eaed; }
+        .file-item.active { background: #1a73e8; color: white; border-color: #1a73e8; }
+        .file-item .filename { font-weight: 500; font-size: 12px; }
+        .file-item .filesize { font-size: 10px; opacity: 0.7; }
+        .file-item .db-badge {
+            font-size: 9px; padding: 1px 5px; border-radius: 3px;
+            background: #34a853; color: white; font-weight: 600;
         }
-
-        .file-item.active {
-            background: #667eea;
-            color: white;
-            border-color: #667eea;
+        .file-item .build-badge {
+            font-size: 9px; padding: 1px 5px; border-radius: 3px;
+            background: #fbbc04; color: #333; font-weight: 600;
         }
-
-        .file-item .filename {
-            font-weight: 500;
-            font-size: 13px;
-            margin-bottom: 3px;
-        }
-
-        .file-item .filesize {
-            font-size: 11px;
-            opacity: 0.7;
-        }
-
-        .main-content {
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-            overflow: hidden;
-        }
-
+        .main-content { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
         .toolbar {
-            background: #fff;
-            padding: 15px 20px;
-            border-bottom: 1px solid #e0e0e0;
-            display: flex;
-            align-items: center;
-            gap: 15px;
+            background: #fff; padding: 10px 16px; border-bottom: 1px solid #e0e0e0;
+            display: flex; align-items: center; gap: 10px;
         }
-
-        .toolbar h3 {
-            font-size: 16px;
-            color: #333;
-            min-width: 150px;
+        .toolbar h3 { font-size: 14px; color: #333; min-width: 120px; }
+        .search-box {
+            padding: 5px 10px; border: 1px solid #ddd; border-radius: 4px;
+            font-size: 12px; width: 200px;
         }
-
-        .field-selector {
-            display: flex;
-            gap: 10px;
-            flex-wrap: wrap;
-            flex: 1;
+        .search-btn {
+            padding: 5px 12px; background: #1a73e8; color: white; border: none;
+            border-radius: 4px; cursor: pointer; font-size: 12px;
         }
-
+        .refresh-btn {
+            padding: 5px 10px; border: 1px solid #ddd; border-radius: 4px;
+            background: #fff; cursor: pointer; font-size: 12px;
+        }
+        .field-selector { display: flex; gap: 6px; flex-wrap: wrap; flex: 1; }
         .field-checkbox {
-            display: flex;
-            align-items: center;
-            gap: 5px;
-            cursor: pointer;
-            font-size: 13px;
-            padding: 5px 10px;
-            background: #f8f9fa;
-            border-radius: 4px;
-            transition: all 0.2s;
+            display: flex; align-items: center; gap: 3px; cursor: pointer;
+            font-size: 11px; padding: 3px 6px; background: #f8f9fa; border-radius: 3px;
         }
-
-        .field-checkbox:hover {
-            background: #e9ecef;
+        .content-area { flex: 1; overflow: auto; background: #fff; position: relative; }
+        .event-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+        .event-table thead {
+            background: #f8f9fa; position: sticky; top: 0; z-index: 10;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
         }
-
-        .field-checkbox input[type="checkbox"] {
-            cursor: pointer;
+        .event-table th {
+            padding: 8px 12px; text-align: left; font-weight: 600; color: #333;
+            border-bottom: 2px solid #e0e0e0; white-space: nowrap; font-size: 11px;
         }
-
-        .content-area {
-            flex: 1;
-            overflow: auto;
-            padding: 20px;
-            background: #fafafa;
+        .event-table td {
+            padding: 6px 12px; border-bottom: 1px solid #f0f0f0; vertical-align: top;
         }
-
-        .loading {
-            text-align: center;
-            padding: 50px;
-            color: #666;
-        }
-
-        .empty-state {
-            text-align: center;
-            padding: 100px 20px;
-            color: #999;
-        }
-
-        .empty-state .icon {
-            font-size: 64px;
-            margin-bottom: 20px;
-        }
-
-        .empty-state p {
-            font-size: 16px;
-        }
-
-        .event-table {
-            background: #fff;
-            border-radius: 8px;
-            overflow: hidden;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-        }
-
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            font-size: 13px;
-        }
-
-        thead {
-            background: #f8f9fa;
-            position: sticky;
-            top: 0;
-            z-index: 10;
-        }
-
-        th {
-            padding: 12px 15px;
-            text-align: left;
-            font-weight: 600;
-            color: #333;
-            border-bottom: 2px solid #e0e0e0;
-            white-space: nowrap;
-        }
-
-        td {
-            padding: 10px 15px;
-            border-bottom: 1px solid #f0f0f0;
-            vertical-align: top;
-        }
-
-        tr:hover {
-            background: #f8f9fa;
-        }
-
+        .event-table tbody tr:hover { background: #e8f0fe; }
         .level-badge {
-            display: inline-block;
-            padding: 3px 8px;
-            border-radius: 12px;
-            font-size: 11px;
-            font-weight: 500;
+            display: inline-block; padding: 2px 6px; border-radius: 10px;
+            font-size: 10px; font-weight: 500;
         }
-
-        .level-严重 {
-            background: #dc3545;
-            color: white;
-        }
-
-        .level-错误 {
-            background: #fd7e14;
-            color: white;
-        }
-
-        .level-警告 {
-            background: #ffc107;
-            color: #333;
-        }
-
-        .level-信息 {
-            background: #28a745;
-            color: white;
-        }
-
-        .level-详细 {
-            background: #17a2b8;
-            color: white;
-        }
-
+        .level-严重 { background: #d93025; color: white; }
+        .level-错误 { background: #ea8600; color: white; }
+        .level-警告 { background: #f9ab00; color: #333; }
+        .level-信息 { background: #1e8e3e; color: white; }
+        .level-详细 { background: #1a73e8; color: white; }
         .event-data {
-            max-width: 300px;
-            max-height: 100px;
-            overflow: auto;
-            background: #f8f9fa;
-            padding: 8px;
-            border-radius: 4px;
-            font-family: monospace;
-            font-size: 11px;
+            max-width: 250px; max-height: 80px; overflow: auto; background: #f8f9fa;
+            padding: 4px 6px; border-radius: 3px; font-family: monospace; font-size: 10px;
         }
-
         .raw-xml {
-            max-width: 400px;
-            max-height: 150px;
-            overflow: auto;
-            background: #f8f9fa;
-            padding: 8px;
-            border-radius: 4px;
-            font-family: monospace;
-            font-size: 11px;
+            max-width: 350px; max-height: 120px; overflow: auto; background: #f8f9fa;
+            padding: 4px 6px; border-radius: 3px; font-family: monospace; font-size: 10px;
             white-space: pre-wrap;
         }
-
         .stats-bar {
-            background: #fff;
-            padding: 10px 20px;
-            border-top: 1px solid #e0e0e0;
-            font-size: 12px;
-            color: #666;
-            display: flex;
-            justify-content: space-between;
+            background: #fff; padding: 8px 16px; border-top: 1px solid #e0e0e0;
+            font-size: 11px; color: #666; display: flex; justify-content: space-between;
+            align-items: center;
         }
-
         .cache-badge {
-            display: inline-block;
-            padding: 2px 6px;
-            border-radius: 3px;
-            font-size: 11px;
-            background: #28a745;
-            color: white;
-            margin-left: 10px;
+            display: inline-block; padding: 1px 5px; border-radius: 3px;
+            font-size: 10px; background: #34a853; color: white; margin-left: 8px;
         }
-
-        .refresh-btn {
-            padding: 5px 10px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            background: #fff;
-            cursor: pointer;
-            font-size: 12px;
-            transition: all 0.2s;
+        .pagination {
+            display: flex; align-items: center; gap: 8px; font-size: 11px;
         }
-
-        .refresh-btn:hover {
-            background: #e9ecef;
-            border-color: #667eea;
+        .pagination button {
+            padding: 3px 10px; border: 1px solid #ddd; border-radius: 3px;
+            background: #fff; cursor: pointer; font-size: 11px;
         }
-
-        .hidden {
-            display: none;
+        .pagination button:disabled { opacity: 0.4; cursor: default; }
+        .pagination button:hover:not(:disabled) { background: #e8eaed; }
+        .loading-overlay {
+            position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(255,255,255,0.9); display: flex; flex-direction: column;
+            align-items: center; justify-content: center; z-index: 100;
         }
+        .spinner {
+            width: 40px; height: 40px; border: 3px solid #e0e0e0;
+            border-top-color: #1a73e8; border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .loading-text { margin-top: 12px; font-size: 13px; color: #666; }
+        .empty-state { text-align: center; padding: 80px 20px; color: #999; }
+        .empty-state .icon { font-size: 48px; margin-bottom: 16px; }
+        .hidden { display: none; }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="sidebar">
             <div class="sidebar-header">
-                <h2>📁 事件日志文件</h2>
-                <p>选择要查看的日志文件</p>
+                <h2>📁 事件日志查看器</h2>
+                <p>选择日志文件进行查看</p>
             </div>
             <div class="category-filter">
                 <select class="category-select" id="categoryFilter" onchange="filterByCategory()">
-                    <option value="all">📂 全部日志类型</option>
+                    <option value="all"> 全部类型</option>
                     <option value="安全日志">🔒 安全日志</option>
                     <option value="系统日志">⚙️ 系统日志</option>
                     <option value="应用程序日志">📦 应用程序日志</option>
@@ -345,242 +160,240 @@
                 </select>
             </div>
             <div class="file-list" id="fileList">
-                <div class="loading">加载中...</div>
+                <div class="empty-state"><p>加载中...</p></div>
             </div>
         </div>
 
         <div class="main-content">
             <div class="toolbar">
                 <h3 id="currentFile">请选择文件</h3>
-                <button class="refresh-btn" onclick="refreshCurrentFile()" title="重新解析（不使用缓存）">🔄 刷新</button>
+                <input class="search-box" id="searchBox" placeholder="搜索事件ID/提供程序/消息..." onkeydown="if(event.key==='Enter')doSearch()">
+                <button class="search-btn" onclick="doSearch()">🔍</button>
+                <button class="refresh-btn" onclick="rebuildDb()" title="重新构建数据库"> 重建</button>
                 <div class="field-selector" id="fieldSelector"></div>
             </div>
 
             <div class="content-area" id="contentArea">
                 <div class="empty-state">
                     <div class="icon">📋</div>
-                    <p>请从左侧选择一个日志文件查看</p>
+                    <p>请从左侧选择一个日志文件</p>
+                    <p style="font-size:12px;margin-top:8px;color:#aaa">首次打开会自动解析并构建数据库，之后查询毫秒级响应</p>
                 </div>
             </div>
 
-            <div class="stats-bar" id="statsBar" style="display: none;">
-                <span id="statsInfo"></span>
-                <span id="timestamp"></span>
+            <div class="stats-bar" id="statsBar" style="display:none;">
+                <div id="statsInfo"></div>
+                <div class="pagination" id="pagination"></div>
             </div>
         </div>
     </div>
 
     <script>
+        let allCategories = {};
+        let currentFile = '';
+        let currentPage = 1;
+        let totalPages = 0;
+        let totalEvents = 0;
         let currentEvents = [];
         let availableFields = [];
         let selectedFields = new Set();
-        let allCategories = {};
-        let currentFile = '';
+        let isSearching = false;
+        let searchKeyword = '';
 
         async function loadFiles() {
             try {
-                const response = await fetch('/api/files');
-                const data = await response.json();
-                
-                const fileList = document.getElementById('fileList');
-                
-                if (!data.categories || Object.keys(data.categories).length === 0) {
-                    fileList.innerHTML = '<div class="empty-state"><p>未找到EVTX文件</p></div>';
-                    return;
-                }
-
-                allCategories = data.categories;
+                const res = await fetch('/api/files');
+                const data = await res.json();
+                allCategories = data.categories || {};
                 renderFileList();
-            } catch (error) {
-                console.error('加载文件列表失败:', error);
-            }
+            } catch (e) { console.error(e); }
         }
 
         function renderFileList() {
-            const fileList = document.getElementById('fileList');
-            const filterValue = document.getElementById('categoryFilter').value;
-            
+            const filter = document.getElementById('categoryFilter').value;
             let html = '';
-            
-            for (const [category, files] of Object.entries(allCategories)) {
-                if (filterValue !== 'all' && category !== filterValue) {
-                    continue;
-                }
-                
-                html += `<div class="category-group">`;
-                html += `<div class="category-title">${category} (${files.length})</div>`;
-                
-                files.forEach(file => {
-                    html += `
-                        <div class="file-item" onclick="loadEvents('${file.filename}')" data-filename="${file.filename}">
-                            <div class="filename">${file.filename}</div>
-                            <div class="filesize">${formatFileSize(file.size)}</div>
-                        </div>
-                    `;
+            for (const [cat, files] of Object.entries(allCategories)) {
+                if (filter !== 'all' && cat !== filter) continue;
+                html += `<div class="category-group">
+                    <div class="category-title">${cat} (${files.length})</div>`;
+                files.forEach(f => {
+                    const badge = f.db_ready
+                        ? '<span class="db-badge">已索引</span>'
+                        : '<span class="build-badge">未索引</span>';
+                    html += `<div class="file-item" onclick="selectFile('${f.filename}')" data-filename="${f.filename}">
+                        <div><div class="filename">${f.filename}</div>
+                        <div class="filesize">${formatSize(f.size)}</div></div>
+                        ${badge}
+                    </div>`;
                 });
-                
                 html += '</div>';
             }
-            
-            fileList.innerHTML = html || '<div class="empty-state"><p>该类别下没有文件</p></div>';
+            document.getElementById('fileList').innerHTML = html || '<div class="empty-state"><p>该类别下没有文件</p></div>';
         }
 
-        function filterByCategory() {
-            renderFileList();
-        }
+        function filterByCategory() { renderFileList(); }
 
         async function loadFields() {
-            try {
-                const response = await fetch('/api/fields');
-                const data = await response.json();
-                availableFields = data.fields;
-                
-                selectedFields = new Set(
-                    data.fields.filter(f => f.default).map(f => f.id)
-                );
-                
-                renderFieldSelector();
-            } catch (error) {
-                console.error('加载字段列表失败:', error);
-            }
+            const res = await fetch('/api/fields');
+            const data = await res.json();
+            availableFields = data.fields;
+            selectedFields = new Set(data.fields.filter(f => f.default).map(f => f.id));
+            renderFieldSelector();
         }
 
         function renderFieldSelector() {
-            const selector = document.getElementById('fieldSelector');
-            selector.innerHTML = availableFields.map(field => `
-                <label class="field-checkbox">
-                    <input type="checkbox" 
-                           value="${field.id}" 
-                           ${selectedFields.has(field.id) ? 'checked' : ''}
-                           onchange="toggleField('${field.id}')">
-                    ${field.name}
-                </label>
-            `).join('');
+            document.getElementById('fieldSelector').innerHTML = availableFields.map(f =>
+                `<label class="field-checkbox"><input type="checkbox" value="${f.id}" ${selectedFields.has(f.id)?'checked':''} onchange="toggleField('${f.id}')">${f.name}</label>`
+            ).join('');
         }
 
-        function toggleField(fieldId) {
-            if (selectedFields.has(fieldId)) {
-                selectedFields.delete(fieldId);
-            } else {
-                selectedFields.add(fieldId);
-            }
-            renderEvents();
+        function toggleField(id) {
+            selectedFields.has(id) ? selectedFields.delete(id) : selectedFields.add(id);
+            renderTable(currentEvents);
         }
 
-        async function loadEvents(filename, forceRefresh = false) {
+        async function selectFile(filename) {
             currentFile = filename;
-            
-            document.querySelectorAll('.file-item').forEach(item => {
-                item.classList.remove('active');
-                if (item.dataset.filename === filename) {
-                    item.classList.add('active');
-                }
-            });
+            currentPage = 1;
+            isSearching = false;
+            searchKeyword = '';
+            document.getElementById('searchBox').value = '';
 
+            document.querySelectorAll('.file-item').forEach(el => {
+                el.classList.toggle('active', el.dataset.filename === filename);
+            });
             document.getElementById('currentFile').textContent = filename;
-            document.getElementById('contentArea').innerHTML = forceRefresh 
-                ? '<div class="loading">正在重新解析日志文件...</div>'
-                : '<div class="loading">正在解析日志文件...</div>';
+            showLoading('正在解析并构建数据库...');
+            await loadEvents(1);
+        }
+
+        async function loadEvents(page) {
+            currentPage = page;
+            showLoading('加载中...');
 
             try {
-                const url = forceRefresh 
-                    ? `/api/events?filename=${encodeURIComponent(filename)}&refresh=true`
-                    : `/api/events?filename=${encodeURIComponent(filename)}`;
-                    
-                const response = await fetch(url);
-                const data = await response.json();
-                
+                const url = isSearching
+                    ? `/api/search?filename=${encodeURIComponent(currentFile)}&keyword=${encodeURIComponent(searchKeyword)}&page=${page}`
+                    : `/api/events?filename=${encodeURIComponent(currentFile)}&page=${page}`;
+                const res = await fetch(url);
+                const data = await res.json();
+
                 if (data.status === 'error') {
-                    document.getElementById('contentArea').innerHTML = `<div class="empty-state"><p>加载失败: ${data.message}</p></div>`;
+                    document.getElementById('contentArea').innerHTML = `<div class="empty-state"><p>${data.message}</p></div>`;
                     return;
                 }
 
-                currentEvents = data.events;
-                
-                const cacheInfo = data.from_cache ? '<span class="cache-badge">✓ 缓存加载</span>' : '';
+                totalEvents = data.total;
+                totalPages = data.total_pages;
+                currentEvents = data.events || [];
+
+                const badge = data.from_cache ? '<span class="cache-badge">⚡ 毫秒级</span>' : '';
+                document.getElementById('statsInfo').innerHTML =
+                    `共 <b>${data.total}</b> 条 | 查询 ${data.query_time}秒 ${badge}`;
+                document.getElementById('timestamp')?.remove();
+
+                renderTable(currentEvents);
+                renderPagination();
                 document.getElementById('statsBar').style.display = 'flex';
-                document.getElementById('statsInfo').innerHTML = `共 ${data.total} 条事件记录 | 解析耗时 ${data.parse_time}秒${cacheInfo}`;
-                document.getElementById('timestamp').textContent = `加载时间: ${new Date().toLocaleString('zh-CN')}`;
-                
-                renderEvents();
-            } catch (error) {
-                console.error('加载事件失败:', error);
-                document.getElementById('contentArea').innerHTML = '<div class="empty-state"><p>加载失败，请稍后重试</p></div>';
+            } catch (e) {
+                console.error(e);
+                document.getElementById('contentArea').innerHTML = '<div class="empty-state"><p>加载失败</p></div>';
             }
         }
 
-        function refreshCurrentFile() {
-            if (currentFile) {
-                loadEvents(currentFile, true);
-            }
-        }
-
-        function renderEvents() {
-            if (currentEvents.length === 0) {
-                document.getElementById('contentArea').innerHTML = '<div class="empty-state"><p>没有事件记录</p></div>';
+        function renderTable(events) {
+            if (!events || events.length === 0) {
+                document.getElementById('contentArea').innerHTML = '<div class="empty-state"><p>没有匹配的事件</p></div>';
                 return;
             }
 
             const fields = availableFields.filter(f => selectedFields.has(f.id));
-            
-            let html = '<div class="event-table"><table>';
-            
-            html += '<thead><tr>';
-            fields.forEach(field => {
-                html += `<th>${field.name}</th>`;
-            });
-            html += '</tr></thead>';
-            
-            html += '<tbody>';
-            currentEvents.forEach(event => {
+            let html = '<table class="event-table"><thead><tr>';
+            fields.forEach(f => html += `<th>${f.name}</th>`);
+            html += '</tr></thead><tbody>';
+            events.forEach(ev => {
                 html += '<tr>';
-                fields.forEach(field => {
-                    html += `<td>${formatFieldValue(field.id, event)}</td>`;
+                fields.forEach(f => {
+                    html += `<td>${fmtField(f.id, ev)}</td>`;
                 });
                 html += '</tr>';
             });
-            html += '</tbody></table></div>';
-            
+            html += '</tbody></table>';
             document.getElementById('contentArea').innerHTML = html;
         }
 
-        function formatFieldValue(fieldId, event) {
-            const value = event[fieldId];
-            
-            if (fieldId === 'Level' && value) {
-                return `<span class="level-badge level-${value}">${value}</span>`;
-            }
-            
-            if (fieldId === 'EventData' && value && typeof value === 'object') {
-                const dataStr = Object.entries(value)
-                    .map(([k, v]) => `${k}: ${v}`)
-                    .join('\n');
-                return `<div class="event-data">${dataStr}</div>`;
-            }
-            
-            if (fieldId === 'RawXML' && value) {
-                return `<div class="raw-xml">${escapeHtml(value)}</div>`;
-            }
-            
-            return value ? escapeHtml(String(value)) : '-';
+        function renderPagination() {
+            const pg = document.getElementById('pagination');
+            if (totalPages <= 1) { pg.innerHTML = ''; return; }
+            let html = `第 ${currentPage}/${totalPages} 页`;
+            html += `<button onclick="loadEvents(1)" ${currentPage===1?'disabled':''}>首页</button>`;
+            html += `<button onclick="loadEvents(${currentPage-1})" ${currentPage===1?'disabled':''}>上一页</button>`;
+            html += `<button onclick="loadEvents(${currentPage+1})" ${currentPage===totalPages?'disabled':''}>下一页</button>`;
+            html += `<button onclick="loadEvents(${totalPages})" ${currentPage===totalPages?'disabled':''}>末页</button>`;
+            pg.innerHTML = html;
         }
 
-        function escapeHtml(text) {
-            const div = document.createElement('div');
-            div.textContent = text;
-            return div.innerHTML;
+        async function doSearch() {
+            const kw = document.getElementById('searchBox').value.trim();
+            if (!currentFile || !kw) return;
+            searchKeyword = kw;
+            isSearching = true;
+            currentPage = 1;
+            showLoading(`搜索 "${kw}"...`);
+            await loadEvents(1);
         }
 
-        function formatFileSize(bytes) {
-            if (bytes < 1024) return bytes + ' B';
-            if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(2) + ' KB';
-            return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
+        async function rebuildDb() {
+            if (!currentFile) return;
+            showLoading('正在重新构建数据库...');
+            try {
+                const res = await fetch(`/api/build?filename=${encodeURIComponent(currentFile)}`);
+                const data = await res.json();
+                if (data.status === 'building') {
+                    showLoading('数据库构建中，请稍候...');
+                    await pollBuildStatus();
+                }
+                await loadEvents(currentPage);
+            } catch (e) { console.error(e); }
         }
 
-        document.addEventListener('DOMContentLoaded', () => {
-            loadFiles();
-            loadFields();
-        });
+        async function pollBuildStatus() {
+            for (let i = 0; i < 120; i++) {
+                await sleep(2000);
+                const res = await fetch(`/api/build/status?filename=${encodeURIComponent(currentFile)}`);
+                const data = await res.json();
+                if (data.status === 'idle') break;
+            }
+        }
+
+        function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+        function showLoading(text) {
+            document.getElementById('contentArea').innerHTML =
+                `<div class="loading-overlay"><div class="spinner"></div><div class="loading-text">${text}</div></div>`;
+        }
+
+        function formatSize(bytes) {
+            if (bytes < 1024) return bytes + 'B';
+            if (bytes < 1048576) return (bytes/1024).toFixed(1) + 'KB';
+            return (bytes/1048576).toFixed(1) + 'MB';
+        }
+
+        function escapeHtml(t) {
+            const d = document.createElement('div'); d.textContent = t; return d.innerHTML;
+        }
+
+        function fmtField(id, ev) {
+            const v = ev[id];
+            if (id === 'Level' && v) return `<span class="level-badge level-${v}">${v}</span>`;
+            if (id === 'EventData' && v && typeof v === 'object') {
+                return `<div class="event-data">${Object.entries(v).map(([k,vs])=>`${k}: ${vs}`).join('\n')}</div>`;
+            }
+            if (id === 'RawXML' && v) return `<div class="raw-xml">${escapeHtml(v)}</div>`;
+            return v ? escapeHtml(String(v)) : '-';
+        }
+
+        document.addEventListener('DOMContentLoaded', () => { loadFiles(); loadFields(); });
     </script>
 </body>
 </html>
