@@ -1,34 +1,144 @@
 """
 EVTX日志解析模块
 用于解析Windows事件日志文件(.evtx)并提取日志数据
+支持缓存机制以提升二次访问速度
 """
 import xml.etree.ElementTree as ET
 from Evtx.Evtx import FileHeader
 from datetime import datetime
 from typing import List, Dict, Any
 import os
+import json
+import hashlib
+
+
+LOG_CATEGORIES = {
+    '安全日志': ['Security'],
+    '系统日志': ['System', 'Microsoft-Windows-Kernel-*', 'Microsoft-Windows-WindowsUpdateClient'],
+    '应用程序日志': ['Application', 'Microsoft-Windows-Application-Experience'],
+    'Setup日志': ['Setup', 'Windows Setup'],
+    'Forwarded日志': ['ForwardedEvents']
+}
+
+
+def categorize_log_file(filename: str) -> str:
+    """
+    根据文件名判断日志类别
+    
+    Args:
+        filename: 文件名
+        
+    Returns:
+        日志类别名称
+    """
+    filename_lower = filename.lower()
+    
+    if 'security' in filename_lower:
+        return '安全日志'
+    elif 'system' in filename_lower:
+        return '系统日志'
+    elif 'application' in filename_lower or 'app' in filename_lower:
+        return '应用程序日志'
+    elif 'setup' in filename_lower:
+        return 'Setup日志'
+    else:
+        return '其他日志'
 
 
 class EvtxParser:
     """EVTX文件解析器"""
 
-    def __init__(self, evtx_path: str):
+    def __init__(self, evtx_path: str, cache_dir: str = None):
         """
         初始化解析器
         
         Args:
             evtx_path: EVTX文件路径
+            cache_dir: 缓存目录，默认为evtx文件同级目录下的cache文件夹
         """
         self.evtx_path = evtx_path
         self.events = []
+        self.cache_dir = cache_dir or os.path.join(os.path.dirname(evtx_path), 'cache')
+        os.makedirs(self.cache_dir, exist_ok=True)
         
-    def parse(self) -> List[Dict[str, Any]]:
+    def _get_cache_key(self) -> str:
+        """
+        根据文件路径和修改时间生成缓存键
+        
+        Returns:
+            缓存键（MD5哈希值）
+        """
+        file_stat = os.stat(self.evtx_path)
+        key_source = f"{self.evtx_path}_{file_stat.st_mtime}_{file_stat.st_size}"
+        return hashlib.md5(key_source.encode()).hexdigest()
+    
+    def _get_cache_path(self) -> str:
+        """
+        获取缓存文件路径
+        
+        Returns:
+            缓存文件路径
+        """
+        cache_key = self._get_cache_key()
+        filename = os.path.basename(self.evtx_path)
+        return os.path.join(self.cache_dir, f"{filename}_{cache_key}.json")
+    
+    def _load_from_cache(self) -> List[Dict[str, Any]]:
+        """
+        从缓存加载数据
+        
+        Returns:
+            缓存的事件数据，如果缓存不存在则返回None
+        """
+        cache_path = self._get_cache_path()
+        if os.path.exists(cache_path):
+            try:
+                with open(cache_path, 'r', encoding='utf-8') as f:
+                    return json.load(f)
+            except:
+                return None
+        return None
+    
+    def _save_to_cache(self, events: List[Dict[str, Any]]) -> None:
+        """
+        保存数据到缓存
+        
+        Args:
+            events: 事件数据列表
+        """
+        cache_path = self._get_cache_path()
+        try:
+            with open(cache_path, 'w', encoding='utf-8') as f:
+                json.dump(events, f, ensure_ascii=False)
+        except:
+            pass
+    
+    def _clean_old_cache(self) -> None:
+        """清理当前文件名的旧缓存"""
+        filename = os.path.basename(self.evtx_path)
+        try:
+            for f in os.listdir(self.cache_dir):
+                if f.startswith(filename) and f.endswith('.json'):
+                    os.remove(os.path.join(self.cache_dir, f))
+        except:
+            pass
+
+    def parse(self, use_cache: bool = True) -> List[Dict[str, Any]]:
         """
         解析EVTX文件,提取所有事件记录
         
+        Args:
+            use_cache: 是否使用缓存，默认True
+            
         Returns:
             事件列表,每个事件为一个字典
         """
+        if use_cache:
+            cached_data = self._load_from_cache()
+            if cached_data is not None:
+                self.events = cached_data
+                return self.events
+        
         self.events = []
         
         try:
@@ -48,6 +158,10 @@ class EvtxParser:
                             continue
         except Exception as e:
             print(f"打开文件 {self.evtx_path} 时出错: {e}")
+        
+        if use_cache and self.events:
+            self._clean_old_cache()
+            self._save_to_cache(self.events)
             
         return self.events
     
@@ -238,10 +352,34 @@ def get_evtx_files(directory: str) -> List[Dict[str, str]]:
     for filename in os.listdir(directory):
         if filename.endswith('.evtx'):
             filepath = os.path.join(directory, filename)
+            category = categorize_log_file(filename)
             evtx_files.append({
                 'filename': filename,
                 'filepath': filepath,
-                'size': os.path.getsize(filepath)
+                'size': os.path.getsize(filepath),
+                'category': category
             })
     
-    return sorted(evtx_files, key=lambda x: x['filename'])
+    return sorted(evtx_files, key=lambda x: (x['category'], x['filename']))
+
+
+def get_evtx_categories(directory: str) -> Dict[str, List[Dict[str, str]]]:
+    """
+    获取按类别分组的EVTX文件
+    
+    Args:
+        directory: 目录路径
+        
+    Returns:
+        按类别分组的文件信息字典
+    """
+    files = get_evtx_files(directory)
+    categories = {}
+    
+    for file in files:
+        category = file['category']
+        if category not in categories:
+            categories[category] = []
+        categories[category].append(file)
+    
+    return categories

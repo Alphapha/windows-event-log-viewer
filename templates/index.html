@@ -47,19 +47,50 @@
             opacity: 0.9;
         }
 
+        .category-filter {
+            padding: 10px;
+            border-bottom: 1px solid #e0e0e0;
+            background: #f8f9fa;
+        }
+
+        .category-select {
+            width: 100%;
+            padding: 8px 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 13px;
+            cursor: pointer;
+            background: #fff;
+        }
+
         .file-list {
             flex: 1;
             overflow-y: auto;
             padding: 10px;
         }
 
-        .file-item {
-            padding: 12px 15px;
+        .category-group {
+            margin-bottom: 10px;
+        }
+
+        .category-title {
+            font-size: 12px;
+            color: #666;
+            padding: 5px 10px;
+            background: #e9ecef;
+            border-radius: 4px;
             margin-bottom: 5px;
+            font-weight: 600;
+        }
+
+        .file-item {
+            padding: 10px 12px;
+            margin-bottom: 3px;
             border-radius: 6px;
             cursor: pointer;
             transition: all 0.2s;
-            background: #f8f9fa;
+            background: #fff;
+            border: 1px solid #f0f0f0;
         }
 
         .file-item:hover {
@@ -70,12 +101,13 @@
         .file-item.active {
             background: #667eea;
             color: white;
+            border-color: #667eea;
         }
 
         .file-item .filename {
             font-weight: 500;
-            font-size: 14px;
-            margin-bottom: 4px;
+            font-size: 13px;
+            margin-bottom: 3px;
         }
 
         .file-item .filesize {
@@ -265,6 +297,31 @@
             justify-content: space-between;
         }
 
+        .cache-badge {
+            display: inline-block;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 11px;
+            background: #28a745;
+            color: white;
+            margin-left: 10px;
+        }
+
+        .refresh-btn {
+            padding: 5px 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            background: #fff;
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.2s;
+        }
+
+        .refresh-btn:hover {
+            background: #e9ecef;
+            border-color: #667eea;
+        }
+
         .hidden {
             display: none;
         }
@@ -277,6 +334,16 @@
                 <h2>📁 事件日志文件</h2>
                 <p>选择要查看的日志文件</p>
             </div>
+            <div class="category-filter">
+                <select class="category-select" id="categoryFilter" onchange="filterByCategory()">
+                    <option value="all">📂 全部日志类型</option>
+                    <option value="安全日志">🔒 安全日志</option>
+                    <option value="系统日志">⚙️ 系统日志</option>
+                    <option value="应用程序日志">📦 应用程序日志</option>
+                    <option value="Setup日志">🔧 Setup日志</option>
+                    <option value="其他日志">📄 其他日志</option>
+                </select>
+            </div>
             <div class="file-list" id="fileList">
                 <div class="loading">加载中...</div>
             </div>
@@ -285,6 +352,7 @@
         <div class="main-content">
             <div class="toolbar">
                 <h3 id="currentFile">请选择文件</h3>
+                <button class="refresh-btn" onclick="refreshCurrentFile()" title="重新解析（不使用缓存）">🔄 刷新</button>
                 <div class="field-selector" id="fieldSelector"></div>
             </div>
 
@@ -306,6 +374,8 @@
         let currentEvents = [];
         let availableFields = [];
         let selectedFields = new Set();
+        let allCategories = {};
+        let currentFile = '';
 
         async function loadFiles() {
             try {
@@ -314,20 +384,49 @@
                 
                 const fileList = document.getElementById('fileList');
                 
-                if (data.files.length === 0) {
+                if (!data.categories || Object.keys(data.categories).length === 0) {
                     fileList.innerHTML = '<div class="empty-state"><p>未找到EVTX文件</p></div>';
                     return;
                 }
 
-                fileList.innerHTML = data.files.map(file => `
-                    <div class="file-item" onclick="loadEvents('${file.filename}')">
-                        <div class="filename">${file.filename}</div>
-                        <div class="filesize">${formatFileSize(file.size)}</div>
-                    </div>
-                `).join('');
+                allCategories = data.categories;
+                renderFileList();
             } catch (error) {
                 console.error('加载文件列表失败:', error);
             }
+        }
+
+        function renderFileList() {
+            const fileList = document.getElementById('fileList');
+            const filterValue = document.getElementById('categoryFilter').value;
+            
+            let html = '';
+            
+            for (const [category, files] of Object.entries(allCategories)) {
+                if (filterValue !== 'all' && category !== filterValue) {
+                    continue;
+                }
+                
+                html += `<div class="category-group">`;
+                html += `<div class="category-title">${category} (${files.length})</div>`;
+                
+                files.forEach(file => {
+                    html += `
+                        <div class="file-item" onclick="loadEvents('${file.filename}')" data-filename="${file.filename}">
+                            <div class="filename">${file.filename}</div>
+                            <div class="filesize">${formatFileSize(file.size)}</div>
+                        </div>
+                    `;
+                });
+                
+                html += '</div>';
+            }
+            
+            fileList.innerHTML = html || '<div class="empty-state"><p>该类别下没有文件</p></div>';
+        }
+
+        function filterByCategory() {
+            renderFileList();
         }
 
         async function loadFields() {
@@ -368,17 +467,27 @@
             renderEvents();
         }
 
-        async function loadEvents(filename) {
-            document.getElementById('fileList').querySelectorAll('.file-item').forEach(item => {
+        async function loadEvents(filename, forceRefresh = false) {
+            currentFile = filename;
+            
+            document.querySelectorAll('.file-item').forEach(item => {
                 item.classList.remove('active');
+                if (item.dataset.filename === filename) {
+                    item.classList.add('active');
+                }
             });
-            event.currentTarget.classList.add('active');
 
             document.getElementById('currentFile').textContent = filename;
-            document.getElementById('contentArea').innerHTML = '<div class="loading">正在解析日志文件...</div>';
+            document.getElementById('contentArea').innerHTML = forceRefresh 
+                ? '<div class="loading">正在重新解析日志文件...</div>'
+                : '<div class="loading">正在解析日志文件...</div>';
 
             try {
-                const response = await fetch(`/api/events?filename=${encodeURIComponent(filename)}`);
+                const url = forceRefresh 
+                    ? `/api/events?filename=${encodeURIComponent(filename)}&refresh=true`
+                    : `/api/events?filename=${encodeURIComponent(filename)}`;
+                    
+                const response = await fetch(url);
                 const data = await response.json();
                 
                 if (data.status === 'error') {
@@ -388,14 +497,21 @@
 
                 currentEvents = data.events;
                 
+                const cacheInfo = data.from_cache ? '<span class="cache-badge">✓ 缓存加载</span>' : '';
                 document.getElementById('statsBar').style.display = 'flex';
-                document.getElementById('statsInfo').textContent = `共 ${data.total} 条事件记录`;
+                document.getElementById('statsInfo').innerHTML = `共 ${data.total} 条事件记录 | 解析耗时 ${data.parse_time}秒${cacheInfo}`;
                 document.getElementById('timestamp').textContent = `加载时间: ${new Date().toLocaleString('zh-CN')}`;
                 
                 renderEvents();
             } catch (error) {
                 console.error('加载事件失败:', error);
                 document.getElementById('contentArea').innerHTML = '<div class="empty-state"><p>加载失败，请稍后重试</p></div>';
+            }
+        }
+
+        function refreshCurrentFile() {
+            if (currentFile) {
+                loadEvents(currentFile, true);
             }
         }
 

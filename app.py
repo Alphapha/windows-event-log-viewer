@@ -4,8 +4,9 @@ Windows事件日志查看器 - Flask Web服务器
 """
 from flask import Flask, render_template, jsonify, request
 from dotenv import load_dotenv
-from evtx_parser import EvtxParser, get_evtx_files
+from evtx_parser import EvtxParser, get_evtx_files, get_evtx_categories
 import os
+import time
 
 load_dotenv()
 
@@ -20,17 +21,19 @@ def index():
 
 @app.route('/api/files')
 def get_files():
-    """获取所有EVTX文件列表"""
-    files = get_evtx_files(EVTX_DIRECTORY)
+    """获取所有EVTX文件列表（按类别分组）"""
+    categories = get_evtx_categories(EVTX_DIRECTORY)
     return jsonify({
         'status': 'success',
-        'files': files
+        'categories': categories
     })
 
 @app.route('/api/events')
 def get_events():
     """获取指定EVTX文件的事件列表"""
     filename = request.args.get('filename')
+    force_refresh = request.args.get('refresh', 'false').lower() == 'true'
+    
     if not filename:
         return jsonify({
             'status': 'error',
@@ -45,13 +48,17 @@ def get_events():
             'message': f'文件不存在: {filename}'
         }), 404
     
+    start_time = time.time()
     parser = EvtxParser(filepath)
-    events = parser.parse()
+    events = parser.parse(use_cache=not force_refresh)
+    elapsed_time = time.time() - start_time
     
     return jsonify({
         'status': 'success',
         'filename': filename,
         'total': len(events),
+        'parse_time': round(elapsed_time, 2),
+        'from_cache': elapsed_time < 0.1,
         'events': events
     })
 
