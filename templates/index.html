@@ -52,10 +52,10 @@
         .file-item.active { background: #1a73e8; color: white; border-color: #1a73e8; }
         .file-item.active .file-actions button { color: rgba(255,255,255,0.8); }
         .file-item.active .file-actions button:hover { color: white; background: rgba(255,255,255,0.2); }
-        .file-item .file-top-row { display: flex; align-items: center; gap: 6px; }
-        .file-item .file-info { display: flex; flex-direction: column; flex: 1; min-width: 0; }
         .file-item .filename { font-weight: 500; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .file-item .filesize { font-size: 10px; opacity: 0.7; }
+        .file-item .file-bottom { display: flex; align-items: center; justify-content: space-between; gap: 4px; }
+        .file-item .file-meta { display: flex; align-items: center; gap: 4px; flex: 1; min-width: 0; }
+        .file-item .filesize { font-size: 10px; opacity: 0.7; white-space: nowrap; }
         .file-item .db-badge {
             font-size: 9px; padding: 1px 5px; border-radius: 3px; flex-shrink: 0;
             background: #34a853; color: white; font-weight: 600;
@@ -68,10 +68,10 @@
             display: flex; gap: 4px; flex-shrink: 0;
         }
         .file-actions button {
-            width: 22px; height: 22px; border: none; border-radius: 3px; cursor: pointer;
-            background: rgba(0,0,0,0.05); color: #666; font-size: 12px;
+            width: 20px; height: 20px; border: none; border-radius: 3px; cursor: pointer;
+            background: rgba(0,0,0,0.05); color: #888; font-size: 11px;
             display: flex; align-items: center; justify-content: center;
-            transition: all 0.1s;
+            transition: all 0.1s; flex-shrink: 0;
         }
         .file-actions button:hover { background: rgba(0,0,0,0.15); }
         .file-actions .btn-delete:hover { color: #d93025; background: rgba(217,48,37,0.1); }
@@ -451,15 +451,17 @@
                     const isActive = f.filename === currentFile ? ' active' : '';
                     const escapedName = f.filename.replace(/'/g, "\\'");
                     html += `<div class="file-item${isActive}" onclick="selectFile('${escapedName}')" data-filename="${f.filename}">
-                        <div class="file-top-row">
-                            <div class="filename" title="${f.filename}">${f.filename}</div>
-                            ${badge}
+                        <div class="filename" title="${f.filename}">${f.filename}</div>
+                        <div class="file-bottom">
+                            <div class="file-meta">
+                                <span class="filesize">${formatSize(f.size)}</span>
+                                ${badge}
+                            </div>
                             <div class="file-actions">
                                 <button class="btn-archive" title="归档" onclick="event.stopPropagation();archiveFile('${escapedName}')">&#x1F4E6;</button>
                                 <button class="btn-delete" title="删除" onclick="event.stopPropagation();deleteFile('${escapedName}')">&#x1F5D1;</button>
                             </div>
                         </div>
-                        <div class="filesize">${formatSize(f.size)}</div>
                     </div>`;
                 });
                 html += '</div>';
@@ -758,12 +760,7 @@
 
                 if (data.status === 'success') {
                     if (currentFile === filename) {
-                        currentFile = '';
-                        currentPage = 1;
-                        document.getElementById('currentFile').textContent = '请选择文件';
-                        document.getElementById('contentArea').innerHTML =
-                            '<div class="empty-state"><div class="icon">&#x1F4CB;</div><p>请从左侧选择一个日志文件</p></div>';
-                        document.getElementById('statsBar').style.display = 'none';
+                        showDefaultState();
                     }
                     await loadFiles();
                 } else {
@@ -785,12 +782,7 @@
 
                 if (data.status === 'success') {
                     if (currentFile === filename) {
-                        currentFile = '';
-                        currentPage = 1;
-                        document.getElementById('currentFile').textContent = '请选择文件';
-                        document.getElementById('contentArea').innerHTML =
-                            '<div class="empty-state"><div class="icon">&#x1F4CB;</div><p>请从左侧选择一个日志文件</p></div>';
-                        document.getElementById('statsBar').style.display = 'none';
+                        showDefaultState();
                     }
                     await loadFiles();
                     await loadArchive();
