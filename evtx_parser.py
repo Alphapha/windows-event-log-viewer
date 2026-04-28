@@ -361,9 +361,9 @@ class EvtxParser:
             conn.close()
             return total
 
-    def query(self, page: int = 1, page_size: int = 200, levels: List[str] = None, time_range: int = None, time_from: str = None, time_to: str = None, sort_order: str = 'desc') -> Dict[str, Any]:
+    def query(self, page: int = 1, page_size: int = 200, levels: List[str] = None, time_range: int = None, time_from: str = None, time_to: str = None, event_id: str = None, sort_order: str = 'desc') -> Dict[str, Any]:
         """
-        从数据库查询事件（分页，支持级别过滤、时间过滤、排序）
+        从数据库查询事件（分页，支持级别过滤、时间过滤、事件ID过滤、排序）
         """
         self.ensure_db()
         conn = sqlite3.connect(self.db_path)
@@ -373,6 +373,11 @@ class EvtxParser:
         # 构建 WHERE 条件
         where_parts = []
         params = []
+
+        # 事件ID过滤
+        if event_id:
+            where_parts.append("event_id = ?")
+            params.append(event_id)
 
         # 级别过滤
         if levels:
@@ -451,7 +456,7 @@ class EvtxParser:
             'events': events
         }
 
-    def search(self, keyword: str, page: int = 1, page_size: int = 200, levels: List[str] = None, time_range: int = None, time_from: str = None, time_to: str = None, sort_order: str = 'desc') -> Dict[str, Any]:
+    def search(self, keyword: str, page: int = 1, page_size: int = 200, levels: List[str] = None, time_range: int = None, time_from: str = None, time_to: str = None, event_id: str = None, sort_order: str = 'desc') -> Dict[str, Any]:
         """搜索所有字段（System字段 + EventData JSON内容）"""
         self.ensure_db()
         conn = sqlite3.connect(self.db_path)
@@ -469,6 +474,11 @@ class EvtxParser:
         ]
         base_where = " WHERE " + " OR ".join([f"{f} LIKE ?" for f in search_fields])
         params = [like for _ in search_fields]
+        
+        # 事件ID过滤
+        if event_id:
+            base_where += " AND event_id = ?"
+            params.append(event_id)
         
         # 级别过滤
         if levels:

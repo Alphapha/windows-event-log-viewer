@@ -157,6 +157,16 @@
         .sort-btn.active { background: #1a73e8; color: white; border-color: #1a73e8; }
         .filter-separator { width: 1px; height: 20px; background: #e0e0e0; flex-shrink: 0; }
         .filter-label { font-size: 11px; color: #666; white-space: nowrap; font-weight: 500; }
+        .event-id-stats { display: flex; gap: 4px; align-items: center; flex-wrap: nowrap; overflow-x: auto; max-width: 500px; }
+        .event-id-chip {
+            padding: 3px 8px; border-radius: 12px; font-size: 11px; cursor: pointer;
+            border: 1px solid #ddd; background: #fff; color: #5f6368;
+            transition: all 0.15s; user-select: none; white-space: nowrap; flex-shrink: 0;
+        }
+        .event-id-chip:hover { background: #e8eaed; }
+        .event-id-chip.active { background: #1a73e8; color: white; border-color: #1a73e8; }
+        .event-id-chip .eid-count { font-size: 10px; opacity: 0.7; margin-left: 2px; }
+        .event-id-more { padding: 3px 8px; border-radius: 12px; font-size: 11px; cursor: pointer; border: 1px dashed #ccc; background: #f8f9fa; color: #999; }
         .field-selector { display: flex; gap: 4px; flex-wrap: wrap; flex: 1; }
         .field-checkbox {
             display: flex; align-items: center; gap: 3px; cursor: pointer;
@@ -245,7 +255,7 @@
             <div class="archive-panel" id="archivePanel" style="display:none;">
                 <div class="archive-header" onclick="toggleArchive()">
                     <span>&#x1F4E6; 归档文件 (<span id="archiveCount">0</span>)</span>
-                    <span id="archiveToggle">&#x25B2;</span>
+                    <span id="archiveToggle">▲</span>
                 </div>
                 <div class="archive-list" id="archiveList"></div>
             </div>
@@ -261,6 +271,11 @@
                     <input class="search-box" id="searchBox" placeholder="&#x641C;&#x7D22;&#x4E8B;&#x4EF6;ID/&#x63D0;&#x4F9B;&#x7A0B;&#x5E8F;/&#x6D88;&#x606F;..." onkeydown="if(event.key==='Enter')doSearch()">
                     <button class="search-btn" onclick="doSearch()">&#x1F50D; &#x641C;&#x7D22;</button>
                     <button class="refresh-btn" onclick="rebuildDb()" title="&#x5F3A;&#x5236;&#x91CD;&#x65B0;&#x6784;&#x5EFA;&#x6570;&#x636E;&#x5E93;">&#x1F504; &#x91CD;&#x5EFA;</button>
+                    <span class="filter-separator"></span>
+                    <span class="filter-label">事件ID:</span>
+                    <div class="event-id-stats" id="eventIdStats">
+                        <span style="font-size:11px;color:#999">选择文件后显示</span>
+                    </div>
                 </div>
                 <div class="toolbar-row">
                     <span class="filter-label">级别:</span>
@@ -336,6 +351,7 @@
         let syncVersion = 0;
         let syncTimer = null;
         let archiveOpen = false;
+        let selectedEventId = null;
 
         function getSelectedLevels() {
             const allChip = document.querySelector('.level-chip[data-level="全部"]');
@@ -481,6 +497,7 @@
             currentPage = 1;
             isSearching = false;
             searchKeyword = '';
+            selectedEventId = null;
             selectedLevels = [];
             timeRangeDays = null;
             customTimeFrom = '';
@@ -509,16 +526,20 @@
             currentFileEl.textContent = filename;
             currentFileEl.style.display = 'block';
             showLoading('正在解析并构建数据库...');
+            await loadEventIds();
             await loadEvents(1);
         }
 
         function showDefaultState() {
             currentFile = '';
             currentPage = 1;
+            selectedEventId = null;
             document.getElementById('currentFile').style.display = 'none';
             document.getElementById('contentArea').innerHTML =
                 '<div class="empty-state"><div class="icon">&#x1F4CB;</div><p>请从左侧选择一个日志文件</p></div>';
             document.getElementById('statsBar').style.display = 'none';
+            document.getElementById('eventIdStats').innerHTML =
+                '<span style="font-size:11px;color:#999">选择文件后显示</span>';
         }
 
         async function loadEvents(page) {
@@ -541,6 +562,10 @@
                 } else {
                     if (timeParams.time_from) url += `&time_from=${encodeURIComponent(timeParams.time_from)}`;
                     if (timeParams.time_to) url += `&time_to=${encodeURIComponent(timeParams.time_to)}`;
+                }
+
+                if (selectedEventId) {
+                    url += `&event_id=${encodeURIComponent(selectedEventId)}`;
                 }
 
                 url += `&sort_order=${sortOrder}`;
@@ -806,7 +831,7 @@
             const list = document.getElementById('archiveList');
             const toggle = document.getElementById('archiveToggle');
             list.classList.toggle('open', archiveOpen);
-            toggle.textContent = archiveOpen ? '&#x25BC;' : '&#x25B2;';
+            toggle.textContent = archiveOpen ? '▼' : '▲';
         }
 
         function toggleSidebar() {
@@ -819,6 +844,38 @@
             } else {
                 icon.innerHTML = '<rect x="3" y="3" width="7" height="18" rx="1"/><rect x="14" y="3" width="7" height="18" rx="1"/>';
             }
+        }
+
+        async function loadEventIds() {
+            if (!currentFile) return;
+            try {
+                const res = await fetch(`/api/event_ids?filename=${encodeURIComponent(currentFile)}&limit=30`);
+                const data = await res.json();
+                if (data.status === 'success') {
+                    renderEventIds(data.event_ids || []);
+                }
+            } catch (e) { console.error(e); }
+        }
+
+        function renderEventIds(eventIds) {
+            const container = document.getElementById('eventIdStats');
+            if (eventIds.length === 0) {
+                container.innerHTML = '<span style="font-size:11px;color:#999">暂无数据</span>';
+                return;
+            }
+            let html = '';
+            eventIds.forEach(eid => {
+                const isActive = selectedEventId === eid.event_id ? ' active' : '';
+                html += `<span class="event-id-chip${isActive}" onclick="filterByEventId('${eid.event_id}')">${eid.event_id}<span class="eid-count">${eid.count}</span></span>`;
+            });
+            container.innerHTML = html;
+        }
+
+        function filterByEventId(eventId) {
+            selectedEventId = selectedEventId === eventId ? null : eventId;
+            currentPage = 1;
+            loadEvents(1);
+            loadEventIds();
         }
 
         async function loadArchive() {

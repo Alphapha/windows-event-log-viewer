@@ -60,7 +60,7 @@ def get_files():
 @app.route('/api/events')
 def get_events():
     """
-    从SQLite查询事件（分页，支持级别过滤、时间过滤、排序）
+    从SQLite查询事件（分页，支持级别过滤、时间过滤、排序、事件ID过滤）
     """
     filename = request.args.get('filename')
     page = int(request.args.get('page', 1))
@@ -73,6 +73,8 @@ def get_events():
     
     time_from = request.args.get('time_from', '')
     time_to = request.args.get('time_to', '')
+    
+    event_id = request.args.get('event_id', '')
     
     sort_order = request.args.get('sort_order', 'desc')
     
@@ -87,7 +89,8 @@ def get_events():
     parser = EvtxParser(filepath)
     result = parser.query(page=page, page_size=page_size, levels=levels, 
                          time_range=time_range, time_from=time_from if time_from else None,
-                         time_to=time_to if time_to else None, sort_order=sort_order)
+                         time_to=time_to if time_to else None, event_id=event_id if event_id else None,
+                         sort_order=sort_order)
     elapsed = time.time() - start_time
     
     return jsonify({
@@ -100,7 +103,7 @@ def get_events():
 
 @app.route('/api/search')
 def search_events():
-    """搜索事件，支持级别过滤、时间过滤、排序"""
+    """搜索事件，支持级别过滤、时间过滤、事件ID过滤、排序"""
     filename = request.args.get('filename')
     keyword = request.args.get('keyword', '')
     page = int(request.args.get('page', 1))
@@ -113,6 +116,8 @@ def search_events():
     
     time_from = request.args.get('time_from', '')
     time_to = request.args.get('time_to', '')
+    
+    event_id = request.args.get('event_id', '')
     
     sort_order = request.args.get('sort_order', 'desc')
     
@@ -127,7 +132,8 @@ def search_events():
     parser = EvtxParser(filepath)
     result = parser.search(keyword=keyword, page=page, page_size=page_size, levels=levels,
                           time_range=time_range, time_from=time_from if time_from else None,
-                          time_to=time_to if time_to else None, sort_order=sort_order)
+                          time_to=time_to if time_to else None, event_id=event_id if event_id else None,
+                          sort_order=sort_order)
     elapsed = time.time() - start_time
     
     return jsonify({
@@ -283,6 +289,39 @@ def get_fields():
         {'id': 'RawXML', 'name': '原始XML', 'default': False}
     ]
     return jsonify({'status': 'success', 'fields': fields})
+
+@app.route('/api/event_ids')
+def get_event_ids():
+    """获取事件ID统计（按出现次数排序）"""
+    filename = request.args.get('filename')
+    limit = int(request.args.get('limit', 20))
+    
+    if not filename:
+        return jsonify({'status': 'error', 'message': '请提供文件名'}), 400
+    
+    filepath = os.path.join(EVTX_DIRECTORY, filename)
+    if not os.path.exists(filepath):
+        return jsonify({'status': 'error', 'message': f'文件不存在: {filename}'}), 404
+    
+    start_time = time.time()
+    parser = EvtxParser(filepath)
+    parser.ensure_db()
+    
+    conn = sqlite3.connect(parser.db_path)
+    rows = conn.execute(
+        f"SELECT event_id, COUNT(*) as cnt FROM events GROUP BY event_id ORDER BY cnt DESC LIMIT ?",
+        [limit]
+    ).fetchall()
+    conn.close()
+    
+    result = [{'event_id': row[0], 'count': row[1]} for row in rows]
+    elapsed = time.time() - start_time
+    
+    return jsonify({
+        'status': 'success',
+        'event_ids': result,
+        'query_time': round(elapsed, 4)
+    })
 
 @app.route('/api/file/delete', methods=['POST'])
 def delete_file():
