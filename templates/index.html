@@ -197,13 +197,26 @@
         .level-信息 { background: #1e8e3e; color: white; }
         .level-详细 { background: #1a73e8; color: white; }
         .event-data {
-            max-width: 250px; max-height: 80px; overflow: auto; background: #f8f9fa;
-            padding: 4px 6px; border-radius: 3px; font-family: monospace; font-size: 10px;
+            max-width: 350px; max-height: 200px; overflow: auto; background: #fafbfc;
+            padding: 6px 8px; border-radius: 4px; font-family: 'SF Mono', 'Consolas', 'Monaco', monospace; font-size: 11px;
+            line-height: 1.6; border: 1px solid #e8eaed;
         }
+        .event-data .kv-line { display: flex; flex-wrap: wrap; margin-bottom: 2px; }
+        .event-data .kv-key {
+            color: #1a73e8; font-weight: 600; min-width: 140px; flex-shrink: 0;
+            padding-right: 4px; word-break: break-all;
+        }
+        .event-data .kv-sep { color: #999; margin: 0 4px; flex-shrink: 0; }
+        .event-data .kv-val {
+            color: #d93025; flex: 1; min-width: 0; word-break: break-all;
+        }
+        .event-data .kv-line:nth-child(even) { background: rgba(0,0,0,0.02); }
+        .event-data .kv-line:hover { background: #e8f0fe; }
+        .event-data-raw { white-space: pre-wrap; word-break: break-all; }
         .raw-xml {
-            max-width: 350px; max-height: 120px; overflow: auto; background: #f8f9fa;
-            padding: 4px 6px; border-radius: 3px; font-family: monospace; font-size: 10px;
-            white-space: pre-wrap;
+            max-width: 350px; max-height: 200px; overflow: auto; background: #fafbfc;
+            padding: 6px 8px; border-radius: 4px; font-family: 'SF Mono', 'Consolas', 'Monaco', monospace; font-size: 11px;
+            white-space: pre-wrap; border: 1px solid #e8eaed; line-height: 1.5;
         }
         .stats-bar {
             background: #fff; padding: 8px 16px; border-top: 1px solid #e0e0e0;
@@ -705,7 +718,14 @@
             const v = ev[id];
             if (id === 'Level' && v) return `<span class="level-badge level-${v}">${v}</span>`;
             if (id === 'EventData' && v && typeof v === 'object') {
-                return `<div class="event-data">${Object.entries(v).map(([k,vs])=>`${k}: ${vs}`).join('\n')}</div>`;
+                let html = '<div class="event-data">';
+                const entries = Object.entries(v);
+                entries.forEach(([k, vs], idx) => {
+                    const valStr = Array.isArray(vs) ? vs.join(', ') : String(vs || '');
+                    html += `<div class="kv-line"><span class="kv-key">${escapeHtml(k)}</span><span class="kv-sep">=</span><span class="kv-val">${escapeHtml(valStr)}</span></div>`;
+                });
+                html += '</div>';
+                return html;
             }
             if (id === 'RawXML' && v) return `<div class="raw-xml">${escapeHtml(v)}</div>`;
             return v ? escapeHtml(String(v)) : '-';
@@ -866,7 +886,9 @@
             let html = '';
             eventIds.forEach(eid => {
                 const isActive = selectedEventId === eid.event_id ? ' active' : '';
-                html += `<span class="event-id-chip${isActive}" onclick="filterByEventId('${eid.event_id}')">${eid.event_id}<span class="eid-count">${eid.count}</span></span>`;
+                const desc = eid.description ? ` title="${eid.description}"` : '';
+                const label = eid.description ? `${eid.event_id} ${eid.description}` : eid.event_id;
+                html += `<span class="event-id-chip${isActive}" onclick="filterByEventId('${eid.event_id}')"${desc}>${label}<span class="eid-count">${eid.count}</span></span>`;
             });
             container.innerHTML = html;
         }

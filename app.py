@@ -8,10 +8,76 @@ from evtx_parser import EvtxParser, get_evtx_categories, categorize_log_file
 import os
 import time
 import threading
+import sqlite3
 import hashlib
 import shutil
 
 load_dotenv()
+
+# 事件ID中文描述映射（常用Windows事件ID分类）
+EVENT_ID_DESCRIPTIONS = {
+    # 登录/注销
+    '4624': '账户成功登录',
+    '4625': '账户登录失败',
+    '4634': '账户注销',
+    '4647': '用户发起注销',
+    '4648': '使用显式凭据登录',
+    '4778': '会话重新连接到会话主机',
+    '4779': '会话断开与主机会话的连接',
+    # 账户管理
+    '4720': '创建用户',
+    '4722': '启用用户账户',
+    '4723': '尝试更改账户密码',
+    '4724': '尝试重置账户密码',
+    '4725': '禁用用户账户',
+    '4726': '删除用户',
+    '4732': '将成员添加到本地组',
+    '4733': '从本地组中删除成员',
+    '4740': '用户账户被锁定',
+    '4767': '解锁用户账户',
+    '4781': '重命名账户',
+    # 策略更改
+    '4719': '系统审核策略已更改',
+    '4739': '修改域策略',
+    # 特权使用
+    '4672': '分配特殊特权',
+    '4673': '调用特权服务',
+    '4674': '尝试对特权对象进行操作',
+    # 进程创建
+    '4688': '创建新进程',
+    '4689': '进程已退出',
+    '4698': '创建计划任务',
+    '4699': '删除计划任务',
+    # 系统事件
+    '1100': '事件日志服务已关闭',
+    '1102': '审计日志已清除',
+    '4608': 'Windows正在启动',
+    '4609': 'Windows正在关闭',
+    '4616': '系统时间已更改',
+    '4697': '服务已安装',
+    # Kerberos
+    '4768': '请求Kerberos TGT',
+    '4769': '请求Kerberos服务票据',
+    '4770': 'Kerberos服务票据已续订',
+    '4771': 'Kerberos预身份验证失败',
+    # 防火墙
+    '5024': 'Windows防火墙服务已启动',
+    '5025': 'Windows防火墙服务已关闭',
+    '5156': 'Windows防火墙允许连接',
+    '5157': 'Windows防火墙已阻止连接',
+    # 注册表
+    '4657': '注册表值已修改',
+    # 对象访问
+    '4656': '请求对象句柄',
+    '4658': '关闭对象句柄',
+    '4663': '尝试访问对象',
+    '5140': '访问网络共享对象',
+    '5145': '检查网络共享对象访问',
+    # 证书服务
+    '4886': '证书服务收到证书请求',
+    '4887': '证书服务批准并颁发证书',
+    '4888': '证书服务拒绝证书请求',
+}
 
 app = Flask(__name__)
 
@@ -292,9 +358,9 @@ def get_fields():
 
 @app.route('/api/event_ids')
 def get_event_ids():
-    """获取事件ID统计（按出现次数排序）"""
+    """获取事件ID统计（按出现次数排序，包含中文描述）"""
     filename = request.args.get('filename')
-    limit = int(request.args.get('limit', 20))
+    limit = int(request.args.get('limit', 30))
     
     if not filename:
         return jsonify({'status': 'error', 'message': '请提供文件名'}), 400
@@ -314,7 +380,15 @@ def get_event_ids():
     ).fetchall()
     conn.close()
     
-    result = [{'event_id': row[0], 'count': row[1]} for row in rows]
+    result = []
+    for row in rows:
+        eid = str(row[0])
+        desc = EVENT_ID_DESCRIPTIONS.get(eid, '')
+        result.append({
+            'event_id': eid,
+            'description': desc,
+            'count': row[1]
+        })
     elapsed = time.time() - start_time
     
     return jsonify({
