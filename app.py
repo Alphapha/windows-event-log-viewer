@@ -41,22 +41,21 @@ def index():
 
 @app.route('/api/files')
 def get_files():
-    """获取所有EVTX文件列表（按类别分组）"""
+    """获取所有EVTX文件列表（平铺列表）"""
     categories = get_evtx_categories(EVTX_DIRECTORY)
-    result = {'status': 'success', 'categories': {}}
+    all_files = []
     
     for category, files in categories.items():
-        result['categories'][category] = []
         for f in files:
             db_path = os.path.join(os.path.dirname(f['filepath']), 'db', 
                                    f"{os.path.splitext(f['filename'])[0]}.db")
             db_exists = os.path.exists(db_path)
-            result['categories'][category].append({
+            all_files.append({
                 **f,
                 'db_ready': db_exists
             })
     
-    return jsonify(result)
+    return jsonify({'status': 'success', 'files': all_files})
 
 @app.route('/api/events')
 def get_events():
