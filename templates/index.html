@@ -44,33 +44,33 @@
             text-transform: uppercase; letter-spacing: 0.5px;
         }
         .file-item {
-            padding: 8px 10px; margin-bottom: 2px; border-radius: 4px; cursor: pointer;
+            padding: 8px 10px 8px 8px; margin-bottom: 2px; border-radius: 4px; cursor: pointer;
             transition: all 0.15s; background: #fff; border: 1px solid transparent;
             display: flex; justify-content: space-between; align-items: center;
             position: relative;
         }
         .file-item:hover { background: #e8eaed; }
-        .file-item:hover .file-actions { display: flex; }
         .file-item.active { background: #1a73e8; color: white; border-color: #1a73e8; }
-        .file-item.active .file-actions button { color: rgba(255,255,255,0.7); }
+        .file-item.active .file-actions button { color: rgba(255,255,255,0.8); }
         .file-item.active .file-actions button:hover { color: white; background: rgba(255,255,255,0.2); }
-        .file-item .filename { font-weight: 500; font-size: 12px; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .file-item .filesize { font-size: 10px; opacity: 0.7; margin-right: 6px; }
+        .file-item .file-left { display: flex; align-items: center; flex: 1; min-width: 0; }
+        .file-item .filename { font-weight: 500; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .file-item .filesize { font-size: 10px; opacity: 0.7; margin-right: 6px; flex-shrink: 0; }
         .file-item .db-badge {
-            font-size: 9px; padding: 1px 5px; border-radius: 3px;
+            font-size: 9px; padding: 1px 5px; border-radius: 3px; flex-shrink: 0;
             background: #34a853; color: white; font-weight: 600;
         }
         .file-item .build-badge {
-            font-size: 9px; padding: 1px 5px; border-radius: 3px;
+            font-size: 9px; padding: 1px 5px; border-radius: 3px; flex-shrink: 0;
             background: #fbbc04; color: #333; font-weight: 600;
         }
         .file-actions {
-            display: none; position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
+            display: flex; position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
             gap: 2px; z-index: 5;
         }
         .file-actions button {
             width: 22px; height: 22px; border: none; border-radius: 3px; cursor: pointer;
-            background: transparent; color: #999; font-size: 13px;
+            background: transparent; color: #aaa; font-size: 13px;
             display: flex; align-items: center; justify-content: center;
             transition: all 0.1s;
         }
@@ -281,12 +281,13 @@
                     <span class="filter-separator"></span>
                     <span class="filter-label">时间:</span>
                     <div class="time-filter-group" id="timeChips">
-                        <span class="time-chip active" data-days="0" onclick="selectTimeRange(this)">今天</span>
+                        <span class="time-chip active" data-range="all" onclick="selectTimeRange(this)">全部</span>
+                        <span class="time-chip" data-days="0" onclick="selectTimeRange(this)">今天</span>
                         <span class="time-chip" data-days="3" onclick="selectTimeRange(this)">近3天</span>
                         <span class="time-chip" data-days="7" onclick="selectTimeRange(this)">近7天</span>
                         <span class="time-chip" data-days="30" onclick="selectTimeRange(this)">近1月</span>
                         <span class="time-chip" data-days="90" onclick="selectTimeRange(this)">近3月</span>
-                        <span class="time-chip" data-days="custom" onclick="selectTimeRange(this)">指定</span>
+                        <span class="time-chip" data-range="custom" onclick="selectTimeRange(this)">指定</span>
                     </div>
                     <input type="datetime-local" class="custom-date-input hidden" id="customDateFrom" onchange="applyTimeFilter()">
                     <span id="customDateToWrapper" class="hidden">
@@ -334,7 +335,7 @@
         let isSearching = false;
         let searchKeyword = '';
         let selectedLevels = [];
-        let timeRangeDays = 0;
+        let timeRangeDays = null;
         let customTimeFrom = '';
         let customTimeTo = '';
         let sortOrder = 'desc';
@@ -369,14 +370,23 @@
             document.querySelectorAll('.time-chip').forEach(c => c.classList.remove('active'));
             el.classList.add('active');
             const days = el.dataset.days;
+            const range = el.dataset.range;
             const customDateFrom = document.getElementById('customDateFrom');
             const customDateToWrapper = document.getElementById('customDateToWrapper');
 
-            if (days === 'custom') {
+            if (range === 'custom') {
                 customDateFrom.classList.remove('hidden');
                 customDateToWrapper.classList.remove('hidden');
                 timeRangeDays = -1;
                 applyTimeFilter();
+            } else if (range === 'all') {
+                customDateFrom.classList.add('hidden');
+                customDateToWrapper.classList.add('hidden');
+                timeRangeDays = null;
+                customTimeFrom = '';
+                customTimeTo = '';
+                currentPage = 1;
+                loadEvents(1);
             } else {
                 customDateFrom.classList.add('hidden');
                 customDateToWrapper.classList.add('hidden');
@@ -406,7 +416,9 @@
         }
 
         function getTimeParams() {
-            if (timeRangeDays >= 0) {
+            if (timeRangeDays === null) {
+                return {};
+            } else if (timeRangeDays >= 0) {
                 return { time_range: timeRangeDays };
             } else {
                 return { time_from: customTimeFrom, time_to: customTimeTo };
@@ -477,7 +489,7 @@
             isSearching = false;
             searchKeyword = '';
             selectedLevels = [];
-            timeRangeDays = 0;
+            timeRangeDays = null;
             customTimeFrom = '';
             customTimeTo = '';
             sortOrder = 'desc';
@@ -491,7 +503,7 @@
                 c.classList.toggle('active', c.dataset.level === '全部');
             });
             document.querySelectorAll('.time-chip').forEach(c => {
-                c.classList.toggle('active', c.dataset.days === '0');
+                c.classList.toggle('active', c.dataset.range === 'all');
             });
             document.querySelectorAll('.sort-btn').forEach(b => {
                 b.classList.toggle('active', b.dataset.order === 'desc');
@@ -544,7 +556,9 @@
                 const badge = data.from_cache ? '<span class="cache-badge">毫秒级</span>' : '';
                 let filterInfo = '';
                 if (levels.length > 0) filterInfo += ` | 级别: ${levels.join(', ')}`;
-                if (timeRangeDays >= 0) {
+                if (timeRangeDays === null) {
+                    filterInfo += ' | 时间: 全部';
+                } else if (timeRangeDays >= 0) {
                     if (timeRangeDays === 0) filterInfo += ' | 时间: 今天';
                     else if (timeRangeDays === 3) filterInfo += ' | 时间: 近3天';
                     else if (timeRangeDays === 7) filterInfo += ' | 时间: 近7天';

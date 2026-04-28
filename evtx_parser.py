@@ -452,16 +452,23 @@ class EvtxParser:
         }
 
     def search(self, keyword: str, page: int = 1, page_size: int = 200, levels: List[str] = None, time_range: int = None, time_from: str = None, time_to: str = None, sort_order: str = 'desc') -> Dict[str, Any]:
-        """搜索事件，支持级别过滤、时间过滤、排序"""
+        """搜索所有字段（System字段 + EventData JSON内容）"""
         self.ensure_db()
         conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row
         c = conn.cursor()
 
         like = f'%{keyword}%'
-        # 构建 WHERE 条件
-        base_where = "WHERE event_id LIKE ? OR provider LIKE ? OR message LIKE ?"
-        params = [like, like, like]
+        # 搜索所有System字段 + EventData JSON内容
+        search_fields = [
+            'record_id', 'event_id', 'version', 'level', 'level_text',
+            'task', 'opcode', 'keywords', 'time_created', 'time_created_raw',
+            'event_record_id', 'correlation_activity_id', 'correlation_related_activity_id',
+            'execution_process_id', 'execution_thread_id',
+            'provider', 'provider_guid', 'channel', 'computer', 'user_id', 'message', 'event_data'
+        ]
+        base_where = " WHERE " + " OR ".join([f"{f} LIKE ?" for f in search_fields])
+        params = [like for _ in search_fields]
         
         # 级别过滤
         if levels:

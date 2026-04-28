@@ -131,6 +131,34 @@ Response (duplicate):
 }
 ```
 
+#### 文件管理API
+
+```
+# 删除文件（同时删除evtx和db）
+POST /api/file/delete
+Content-Type: application/json
+{"filename": "Security.evtx"}
+
+# 归档文件（移动到evtx_archive/）
+POST /api/file/archive
+Content-Type: application/json
+{"filename": "Security.evtx"}
+
+# 恢复归档文件
+POST /api/file/restore
+Content-Type: application/json
+{"filename": "Security_20260427_143022.evtx"}
+
+# 获取归档文件列表
+GET /api/archive/list
+
+# 获取同步版本号
+GET /api/sync/version
+
+# 长轮询检测文件变更（timeout=25秒）
+GET /api/sync/poll?version=0&timeout=25
+```
+
 ## SQLite 数据库机制
 
 应用采用 **SQLite 预处理**策略，实现极速查询体验（类似 Windows 事件查看器）：
@@ -320,7 +348,30 @@ GET /api/fields
 | 4 | 信息 | 绿色 |
 | 5 | 详细 | 蓝色 |
 
-## 注意事项
+### 5. 文件管理
+
+#### 删除文件
+- 鼠标悬停在左侧文件上，会出现操作按钮
+- 点击️按钮，确认后删除（**不可恢复**）
+- 删除会同时移除对应的SQLite数据库文件
+
+#### 归档文件
+- 点击📦按钮将文件归档到 `evtx_archive/` 目录
+- 归档文件自动添加时间戳后缀（如 `Security_20260427_143022.evtx`）
+- 数据库文件也会一并归档
+
+#### 恢复归档
+- 左侧边栏底部会显示归档文件面板（有归档时自动出现）
+- 点击面板标题展开/收起
+- 点击「恢复」按钮可将文件移回 `evtx/` 目录
+- 恢复后数据库也会一并恢复
+
+#### 全局同步
+- 文件变更（删除/归档/恢复/上传）会自动通知所有浏览器标签页
+- 其他标签页会在3秒内自动刷新文件列表
+- 无需手动刷新页面
+
+### 6. 注意事项
 
 1. **跨平台限制**：`python-evtx`库可在Mac/Linux上读取Windows EVTX文件，但文件必须来自Windows系统
 2. **大文件性能**：大型EVTX文件（>100MB）解析可能需要较长时间，请耐心等待
