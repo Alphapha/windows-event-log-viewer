@@ -4,10 +4,11 @@ Windows事件日志查看器 - Flask Web服务器
 """
 from flask import Flask, render_template, jsonify, request
 from dotenv import load_dotenv
-from evtx_parser import EvtxParser, get_evtx_categories
+from evtx_parser import EvtxParser, get_evtx_categories, categorize_log_file
 import os
 import time
 import threading
+import hashlib
 
 load_dotenv()
 
@@ -108,15 +109,19 @@ def search_events():
     if not os.path.exists(filepath):
         return jsonify({'status': 'error', 'message': f'文件不存在: {filename}'}), 404
     
+    start_time = time.time()
     parser = EvtxParser(filepath)
     result = parser.search(keyword=keyword, page=page, page_size=page_size, levels=levels,
                           time_range=time_range, time_from=time_from if time_from else None,
                           time_to=time_to if time_to else None, sort_order=sort_order)
+    elapsed = time.time() - start_time
     
     return jsonify({
         'status': 'success',
         'filename': filename,
-        **result
+        **result,
+        'query_time': round(elapsed, 4),
+        'from_cache': elapsed < 0.01
     })
 
 @app.route('/api/build')
@@ -168,6 +173,72 @@ def build_status():
     if filename in prebuild_threads:
         del prebuild_threads[filename]
     return jsonify({'status': 'idle'})
+
+@app.route('/api/upload', methods=['POST'])
+def upload_file():
+    """上传EVTX文件，支持MD5去重检查"""
+    if 'file' not in request.files:
+        return jsonify({'status': 'error', 'message': '未找到文件'}), 400
+    
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({'status': 'error', 'message': '未选择文件'}), 400
+    
+    if not file.filename.lower().endswith('.evtx'):
+        return jsonify({'status': 'error', 'message': '仅支持 .evtx 格式文件'}), 400
+    
+    # 计算MD5
+    file_content = file.read()
+    file.seek(0)
+    md5_hash = hashlib.md5(file_content).hexdigest()
+    
+    # 检查MD5是否已存在
+    existing_md5 = check_existing_md5(md5_hash)
+    if existing_md5:
+        return jsonify({
+            'status': 'duplicate',
+            'message': f'文件已存在: {existing_md5}',
+            'md5': md5_hash,
+            'existing_filename': existing_md5
+        })
+    
+    # 保存文件
+    filename = file.filename
+    save_path = os.path.join(EVTX_DIRECTORY, filename)
+    
+    # 如果文件名冲突，添加序号
+    if os.path.exists(save_path):
+        base, ext = os.path.splitext(filename)
+        counter = 1
+        while os.path.exists(save_path):
+            save_path = os.path.join(EVTX_DIRECTORY, f'{base}_{counter}{ext}')
+            filename = f'{base}_{counter}{ext}'
+            counter += 1
+    
+    with open(save_path, 'wb') as f:
+        f.write(file_content)
+    
+    return jsonify({
+        'status': 'success',
+        'message': f'上传成功: {filename}',
+        'filename': filename,
+        'md5': md5_hash,
+        'size': os.path.getsize(save_path)
+    })
+
+def check_existing_md5(target_md5: str) -> str:
+    """检查MD5是否已存在于evtx目录中，返回已存在的文件名或None"""
+    if not os.path.exists(EVTX_DIRECTORY):
+        return None
+    
+    for filename in os.listdir(EVTX_DIRECTORY):
+        if not filename.lower().endswith('.evtx'):
+            continue
+        filepath = os.path.join(EVTX_DIRECTORY, filename)
+        file_md5 = hashlib.md5(open(filepath, 'rb').read()).hexdigest()
+        if file_md5 == target_md5:
+            return filename
+    return None
 
 @app.route('/api/fields')
 def get_fields():

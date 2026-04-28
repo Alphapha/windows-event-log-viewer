@@ -21,6 +21,14 @@
         }
         .sidebar-header h2 { font-size: 16px; margin-bottom: 4px; }
         .sidebar-header p { font-size: 11px; opacity: 0.85; }
+        .upload-btn {
+            margin-top: 8px; padding: 5px 12px; border: 1px solid rgba(255,255,255,0.5);
+            border-radius: 4px; background: rgba(255,255,255,0.15); color: white;
+            font-size: 11px; cursor: pointer; width: 100%;
+            transition: all 0.15s;
+        }
+        .upload-btn:hover { background: rgba(255,255,255,0.25); }
+        .upload-btn:disabled { opacity: 0.5; cursor: default; }
         .category-filter {
             padding: 8px 12px; border-bottom: 1px solid #e0e0e0; background: #f8f9fa;
         }
@@ -186,6 +194,8 @@
             <div class="sidebar-header">
                 <h2>&#x1F4C1; &#x4E8B;&#x4EF6;&#x65E5;&#x5FD7;&#x67E5;&#x770B;&#x5668;</h2>
                 <p>&#x9009;&#x62E9;&#x65E5;&#x5FD7;&#x6587;&#x4EF6;&#x8FDB;&#x884C;&#x67E5;&#x770B;</p>
+                <button class="upload-btn" onclick="document.getElementById('fileUpload').click()">&#x1F4E4; &#x4E0A;&#x4F20;EVTX&#x65E5;&#x5FD7;</button>
+                <input type="file" id="fileUpload" accept=".evtx" style="display:none" onchange="uploadFile(this)">
             </div>
             <div class="category-filter">
                 <select class="category-select" id="categoryFilter" onchange="filterByCategory()">
@@ -590,6 +600,54 @@
             }
             if (id === 'RawXML' && v) return `<div class="raw-xml">${escapeHtml(v)}</div>`;
             return v ? escapeHtml(String(v)) : '-';
+        }
+
+        async function uploadFile(input) {
+            const file = input.files[0];
+            if (!file) return;
+
+            if (!file.name.toLowerCase().endsWith('.evtx')) {
+                alert('请上传 .evtx 格式的文件');
+                input.value = '';
+                return;
+            }
+
+            const maxSize = 500 * 1024 * 1024; // 500MB
+            if (file.size > maxSize) {
+                alert('文件大小超过500MB限制');
+                input.value = '';
+                return;
+            }
+
+            const btn = document.querySelector('.upload-btn');
+            btn.disabled = true;
+            btn.textContent = '上传中...';
+
+            const formData = new FormData();
+            formData.append('file', file);
+
+            try {
+                const res = await fetch('/api/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await res.json();
+
+                if (data.status === 'duplicate') {
+                    alert(`文件已存在: ${data.existing_filename}\nMD5: ${data.md5}`);
+                } else if (data.status === 'success') {
+                    alert(`上传成功!\n文件名: ${data.filename}\n大小: ${formatSize(data.size)}\nMD5: ${data.md5}`);
+                    await loadFiles();
+                } else {
+                    alert(`上传失败: ${data.message}`);
+                }
+            } catch (e) {
+                alert('上传失败: ' + e.message);
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '&#x1F4E4; &#x4E0A;&#x4F20;EVTX&#x65E5;&#x5FD7;';
+                input.value = '';
+            }
         }
 
         document.addEventListener('DOMContentLoaded', () => { loadFiles(); loadFields(); });
