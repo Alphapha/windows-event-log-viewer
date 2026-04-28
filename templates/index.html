@@ -44,18 +44,17 @@
             text-transform: uppercase; letter-spacing: 0.5px;
         }
         .file-item {
-            padding: 8px 10px 8px 8px; margin-bottom: 2px; border-radius: 4px; cursor: pointer;
+            padding: 6px 8px; margin-bottom: 2px; border-radius: 4px; cursor: pointer;
             transition: all 0.15s; background: #fff; border: 1px solid transparent;
-            display: flex; justify-content: space-between; align-items: center;
-            position: relative;
+            display: flex; align-items: center; gap: 4px; overflow: hidden;
         }
         .file-item:hover { background: #e8eaed; }
         .file-item.active { background: #1a73e8; color: white; border-color: #1a73e8; }
         .file-item.active .file-actions button { color: rgba(255,255,255,0.8); }
         .file-item.active .file-actions button:hover { color: white; background: rgba(255,255,255,0.2); }
-        .file-item .file-left { display: flex; align-items: center; flex: 1; min-width: 0; }
+        .file-item .file-info { display: flex; flex-direction: column; flex: 1; min-width: 0; }
         .file-item .filename { font-weight: 500; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .file-item .filesize { font-size: 10px; opacity: 0.7; margin-right: 6px; flex-shrink: 0; }
+        .file-item .filesize { font-size: 10px; opacity: 0.7; }
         .file-item .db-badge {
             font-size: 9px; padding: 1px 5px; border-radius: 3px; flex-shrink: 0;
             background: #34a853; color: white; font-weight: 600;
@@ -65,18 +64,21 @@
             background: #fbbc04; color: #333; font-weight: 600;
         }
         .file-actions {
-            display: flex; position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
-            gap: 2px; z-index: 5;
+            display: flex; gap: 1px; flex-shrink: 0;
         }
         .file-actions button {
-            width: 22px; height: 22px; border: none; border-radius: 3px; cursor: pointer;
-            background: transparent; color: #aaa; font-size: 13px;
+            width: 18px; height: 18px; border: none; border-radius: 3px; cursor: pointer;
+            background: transparent; color: #999; font-size: 11px;
             display: flex; align-items: center; justify-content: center;
             transition: all 0.1s;
         }
         .file-actions button:hover { background: rgba(0,0,0,0.1); }
         .file-actions .btn-delete:hover { color: #d93025; }
         .file-actions .btn-archive:hover { color: #ea8600; }
+        .archive-item .arc-name { 
+            font-weight: 500; color: #333; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+            max-width: 140px;
+        }
         .archive-panel {
             border-top: 1px solid #e0e0e0; background: #fafafa; max-height: 200px; overflow-y: auto;
         }
@@ -263,7 +265,7 @@
         <div class="main-content">
             <div class="toolbar">
                 <div class="toolbar-row">
-                    <h3 id="currentFile">&#x8BF7;&#x9009;&#x62E9;&#x6587;&#x4EF6;</h3>
+                    <h3 id="currentFile" style="cursor:pointer" onclick="showDefaultState()">&#x8BF7;&#x9009;&#x62E9;&#x6587;&#x4EF6;</h3>
                     <input class="search-box" id="searchBox" placeholder="&#x641C;&#x7D22;&#x4E8B;&#x4EF6;ID/&#x63D0;&#x4F9B;&#x7A0B;&#x5E8F;/&#x6D88;&#x606F;..." onkeydown="if(event.key==='Enter')doSearch()">
                     <button class="search-btn" onclick="doSearch()">&#x1F50D; &#x641C;&#x7D22;</button>
                     <button class="refresh-btn" onclick="rebuildDb()" title="&#x5F3A;&#x5236;&#x91CD;&#x65B0;&#x6784;&#x5EFA;&#x6570;&#x636E;&#x5E93;">&#x1F504; &#x91CD;&#x5EFA;</button>
@@ -448,8 +450,10 @@
                     const isActive = f.filename === currentFile ? ' active' : '';
                     const escapedName = f.filename.replace(/'/g, "\\'");
                     html += `<div class="file-item${isActive}" onclick="selectFile('${escapedName}')" data-filename="${f.filename}">
-                        <div><div class="filename" title="${f.filename}">${f.filename}</div>
-                        <div class="filesize">${formatSize(f.size)}</div></div>
+                        <div class="file-info">
+                            <div class="filename" title="${f.filename}">${f.filename}</div>
+                            <div class="filesize">${formatSize(f.size)}</div>
+                        </div>
                         ${badge}
                         <div class="file-actions">
                             <button class="btn-archive" title="归档" onclick="event.stopPropagation();archiveFile('${escapedName}')">&#x1F4E6;</button>
@@ -615,7 +619,16 @@
 
         async function doSearch() {
             const kw = document.getElementById('searchBox').value.trim();
-            if (!currentFile || !kw) return;
+            if (!currentFile) return;
+            
+            if (!kw) {
+                isSearching = false;
+                searchKeyword = '';
+                currentPage = 1;
+                await loadEvents(1);
+                return;
+            }
+            
             searchKeyword = kw;
             isSearching = true;
             currentPage = 1;
@@ -723,8 +736,6 @@
 
         // ========== 文件操作 ==========
         async function deleteFile(filename) {
-            if (!confirm(`确定要删除 "${filename}" 吗？\n此操作将同时删除对应的数据库文件，不可恢复。`)) return;
-
             try {
                 const res = await fetch('/api/file/delete', {
                     method: 'POST',
@@ -734,7 +745,6 @@
                 const data = await res.json();
 
                 if (data.status === 'success') {
-                    alert(data.message);
                     if (currentFile === filename) {
                         currentFile = '';
                         currentPage = 1;
@@ -753,8 +763,6 @@
         }
 
         async function archiveFile(filename) {
-            if (!confirm(`确定要归档 "${filename}" 吗？\n归档后将移动到归档目录，可随时恢复。`)) return;
-
             try {
                 const res = await fetch('/api/file/archive', {
                     method: 'POST',
@@ -764,7 +772,6 @@
                 const data = await res.json();
 
                 if (data.status === 'success') {
-                    alert(data.message);
                     if (currentFile === filename) {
                         currentFile = '';
                         currentPage = 1;
@@ -784,8 +791,6 @@
         }
 
         async function restoreFile(filename) {
-            if (!confirm(`确定要从归档恢复 "${filename}" 吗？`)) return;
-
             try {
                 const res = await fetch('/api/file/restore', {
                     method: 'POST',
@@ -795,7 +800,6 @@
                 const data = await res.json();
 
                 if (data.status === 'success') {
-                    alert(data.message);
                     await loadFiles();
                     await loadArchive();
                 } else {
