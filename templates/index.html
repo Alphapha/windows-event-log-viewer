@@ -47,11 +47,15 @@
             padding: 8px 10px; margin-bottom: 2px; border-radius: 4px; cursor: pointer;
             transition: all 0.15s; background: #fff; border: 1px solid transparent;
             display: flex; justify-content: space-between; align-items: center;
+            position: relative;
         }
         .file-item:hover { background: #e8eaed; }
+        .file-item:hover .file-actions { display: flex; }
         .file-item.active { background: #1a73e8; color: white; border-color: #1a73e8; }
-        .file-item .filename { font-weight: 500; font-size: 12px; }
-        .file-item .filesize { font-size: 10px; opacity: 0.7; }
+        .file-item.active .file-actions button { color: rgba(255,255,255,0.7); }
+        .file-item.active .file-actions button:hover { color: white; background: rgba(255,255,255,0.2); }
+        .file-item .filename { font-weight: 500; font-size: 12px; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .file-item .filesize { font-size: 10px; opacity: 0.7; margin-right: 6px; }
         .file-item .db-badge {
             font-size: 9px; padding: 1px 5px; border-radius: 3px;
             background: #34a853; color: white; font-weight: 600;
@@ -60,6 +64,43 @@
             font-size: 9px; padding: 1px 5px; border-radius: 3px;
             background: #fbbc04; color: #333; font-weight: 600;
         }
+        .file-actions {
+            display: none; position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
+            gap: 2px; z-index: 5;
+        }
+        .file-actions button {
+            width: 22px; height: 22px; border: none; border-radius: 3px; cursor: pointer;
+            background: transparent; color: #999; font-size: 13px;
+            display: flex; align-items: center; justify-content: center;
+            transition: all 0.1s;
+        }
+        .file-actions button:hover { background: rgba(0,0,0,0.1); }
+        .file-actions .btn-delete:hover { color: #d93025; }
+        .file-actions .btn-archive:hover { color: #ea8600; }
+        .archive-panel {
+            border-top: 1px solid #e0e0e0; background: #fafafa; max-height: 200px; overflow-y: auto;
+        }
+        .archive-header {
+            padding: 6px 12px; font-size: 11px; color: #666; font-weight: 600;
+            background: #e8eaed; cursor: pointer; display: flex; justify-content: space-between;
+            align-items: center;
+        }
+        .archive-header:hover { background: #ddd; }
+        .archive-list { display: none; }
+        .archive-list.open { display: block; }
+        .archive-item {
+            padding: 6px 12px; font-size: 11px; display: flex; justify-content: space-between;
+            align-items: center; border-bottom: 1px solid #eee;
+        }
+        .archive-item:hover { background: #e8eaed; }
+        .archive-item .arc-info { flex: 1; min-width: 0; }
+        .archive-item .arc-name { font-weight: 500; color: #333; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .archive-item .arc-meta { color: #999; font-size: 10px; }
+        .archive-item .btn-restore {
+            padding: 2px 8px; border: 1px solid #1a73e8; border-radius: 3px;
+            background: #fff; color: #1a73e8; font-size: 10px; cursor: pointer; white-space: nowrap;
+        }
+        .archive-item .btn-restore:hover { background: #1a73e8; color: white; }
         .main-content { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
         .toolbar {
             background: #fff; padding: 8px 16px; border-bottom: 1px solid #e0e0e0;
@@ -210,6 +251,13 @@
             <div class="file-list" id="fileList">
                 <div class="empty-state"><p>&#x52A0;&#x8F7D;&#x4E2D;...</p></div>
             </div>
+            <div class="archive-panel" id="archivePanel" style="display:none;">
+                <div class="archive-header" onclick="toggleArchive()">
+                    <span>&#x1F4E6; 归档文件 (<span id="archiveCount">0</span>)</span>
+                    <span id="archiveToggle">&#x25B2;</span>
+                </div>
+                <div class="archive-list" id="archiveList"></div>
+            </div>
         </div>
 
         <div class="main-content">
@@ -290,6 +338,9 @@
         let customTimeFrom = '';
         let customTimeTo = '';
         let sortOrder = 'desc';
+        let syncVersion = 0;
+        let syncTimer = null;
+        let archiveOpen = false;
 
         function getSelectedLevels() {
             const allChip = document.querySelector('.level-chip[data-level="全部"]');
@@ -382,10 +433,16 @@
                     const badge = f.db_ready
                         ? '<span class="db-badge">已索引</span>'
                         : '<span class="build-badge">未索引</span>';
-                    html += `<div class="file-item" onclick="selectFile('${f.filename}')" data-filename="${f.filename}">
-                        <div><div class="filename">${f.filename}</div>
+                    const isActive = f.filename === currentFile ? ' active' : '';
+                    const escapedName = f.filename.replace(/'/g, "\\'");
+                    html += `<div class="file-item${isActive}" onclick="selectFile('${escapedName}')" data-filename="${f.filename}">
+                        <div><div class="filename" title="${f.filename}">${f.filename}</div>
                         <div class="filesize">${formatSize(f.size)}</div></div>
                         ${badge}
+                        <div class="file-actions">
+                            <button class="btn-archive" title="归档" onclick="event.stopPropagation();archiveFile('${escapedName}')">&#x1F4E6;</button>
+                            <button class="btn-delete" title="删除" onclick="event.stopPropagation();deleteFile('${escapedName}')">&#x1F5D1;</button>
+                        </div>
                     </div>`;
                 });
                 html += '</div>';
@@ -612,7 +669,7 @@
                 return;
             }
 
-            const maxSize = 500 * 1024 * 1024; // 500MB
+            const maxSize = 500 * 1024 * 1024;
             if (file.size > maxSize) {
                 alert('文件大小超过500MB限制');
                 input.value = '';
@@ -621,7 +678,7 @@
 
             const btn = document.querySelector('.upload-btn');
             btn.disabled = true;
-            btn.textContent = '上传中...';
+            btn.innerHTML = '&#x1F4E4; &#x4E0A;&#x4F20;&#x4E2D;...';
 
             const formData = new FormData();
             formData.append('file', file);
@@ -650,7 +707,170 @@
             }
         }
 
-        document.addEventListener('DOMContentLoaded', () => { loadFiles(); loadFields(); });
+        // ========== 文件操作 ==========
+        async function deleteFile(filename) {
+            if (!confirm(`确定要删除 "${filename}" 吗？\n此操作将同时删除对应的数据库文件，不可恢复。`)) return;
+
+            try {
+                const res = await fetch('/api/file/delete', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ filename })
+                });
+                const data = await res.json();
+
+                if (data.status === 'success') {
+                    alert(data.message);
+                    if (currentFile === filename) {
+                        currentFile = '';
+                        currentPage = 1;
+                        document.getElementById('currentFile').textContent = '请选择文件';
+                        document.getElementById('contentArea').innerHTML =
+                            '<div class="empty-state"><div class="icon">&#x1F4CB;</div><p>请从左侧选择一个日志文件</p></div>';
+                        document.getElementById('statsBar').style.display = 'none';
+                    }
+                    await loadFiles();
+                } else {
+                    alert(`删除失败: ${data.message}`);
+                }
+            } catch (e) {
+                alert('删除失败: ' + e.message);
+            }
+        }
+
+        async function archiveFile(filename) {
+            if (!confirm(`确定要归档 "${filename}" 吗？\n归档后将移动到归档目录，可随时恢复。`)) return;
+
+            try {
+                const res = await fetch('/api/file/archive', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ filename })
+                });
+                const data = await res.json();
+
+                if (data.status === 'success') {
+                    alert(data.message);
+                    if (currentFile === filename) {
+                        currentFile = '';
+                        currentPage = 1;
+                        document.getElementById('currentFile').textContent = '请选择文件';
+                        document.getElementById('contentArea').innerHTML =
+                            '<div class="empty-state"><div class="icon">&#x1F4CB;</div><p>请从左侧选择一个日志文件</p></div>';
+                        document.getElementById('statsBar').style.display = 'none';
+                    }
+                    await loadFiles();
+                    await loadArchive();
+                } else {
+                    alert(`归档失败: ${data.message}`);
+                }
+            } catch (e) {
+                alert('归档失败: ' + e.message);
+            }
+        }
+
+        async function restoreFile(filename) {
+            if (!confirm(`确定要从归档恢复 "${filename}" 吗？`)) return;
+
+            try {
+                const res = await fetch('/api/file/restore', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ filename })
+                });
+                const data = await res.json();
+
+                if (data.status === 'success') {
+                    alert(data.message);
+                    await loadFiles();
+                    await loadArchive();
+                } else {
+                    alert(`恢复失败: ${data.message}`);
+                }
+            } catch (e) {
+                alert('恢复失败: ' + e.message);
+            }
+        }
+
+        // ========== 归档面板 ==========
+        function toggleArchive() {
+            archiveOpen = !archiveOpen;
+            const list = document.getElementById('archiveList');
+            const toggle = document.getElementById('archiveToggle');
+            list.classList.toggle('open', archiveOpen);
+            toggle.textContent = archiveOpen ? '&#x25BC;' : '&#x25B2;';
+        }
+
+        async function loadArchive() {
+            try {
+                const res = await fetch('/api/archive/list');
+                const data = await res.json();
+                const archives = data.archives || [];
+
+                const panel = document.getElementById('archivePanel');
+                const count = document.getElementById('archiveCount');
+                const list = document.getElementById('archiveList');
+
+                if (archives.length === 0) {
+                    panel.style.display = 'none';
+                    return;
+                }
+
+                panel.style.display = 'block';
+                count.textContent = archives.length;
+
+                list.innerHTML = archives.map(a =>
+                    `<div class="archive-item">
+                        <div class="arc-info">
+                            <div class="arc-name" title="${a.filename}">${a.filename}</div>
+                            <div class="arc-meta">${formatSize(a.size)} | ${a.archived_time}</div>
+                        </div>
+                        <button class="btn-restore" onclick="restoreFile('${a.filename.replace(/'/g, "\\'")}')">恢复</button>
+                    </div>`
+                ).join('');
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        // ========== 全局同步（长轮询） ==========
+        async function startSync() {
+            // 获取当前版本号
+            try {
+                const res = await fetch('/api/sync/version');
+                const data = await res.json();
+                syncVersion = data.version;
+            } catch (e) { console.error(e); }
+
+            pollForChanges();
+        }
+
+        async function pollForChanges() {
+            try {
+                const res = await fetch(`/api/sync/poll?version=${syncVersion}&timeout=25`);
+                const data = await res.json();
+
+                if (data.status === 'changed') {
+                    syncVersion = data.version;
+                    console.log('检测到文件变更，刷新列表...');
+                    await loadFiles();
+                    await loadArchive();
+                }
+
+                // 继续轮询
+                pollForChanges();
+            } catch (e) {
+                // 连接断开后重试
+                setTimeout(pollForChanges, 3000);
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            loadFiles();
+            loadFields();
+            loadArchive();
+            startSync();
+        });
     </script>
 </body>
 </html>

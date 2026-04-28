@@ -9,13 +9,28 @@ import os
 import time
 import threading
 import hashlib
+import shutil
 
 load_dotenv()
 
 app = Flask(__name__)
 
 EVTX_DIRECTORY = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'evtx')
+ARCHIVE_DIRECTORY = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'evtx_archive')
 PAGE_SIZE = 200
+
+# 文件变更版本号，用于全局同步
+file_change_version = {'version': 0}
+file_change_lock = threading.Lock()
+
+def bump_version():
+    """递增文件变更版本号"""
+    with file_change_lock:
+        file_change_version['version'] += 1
+
+def ensure_archive_dir():
+    """确保归档目录存在"""
+    os.makedirs(ARCHIVE_DIRECTORY, exist_ok=True)
 
 prebuild_threads = {}
 
@@ -218,6 +233,7 @@ def upload_file():
     with open(save_path, 'wb') as f:
         f.write(file_content)
     
+    bump_version()
     return jsonify({
         'status': 'success',
         'message': f'上传成功: {filename}',
@@ -268,6 +284,169 @@ def get_fields():
         {'id': 'RawXML', 'name': '原始XML', 'default': False}
     ]
     return jsonify({'status': 'success', 'fields': fields})
+
+@app.route('/api/file/delete', methods=['POST'])
+def delete_file():
+    """删除EVTX文件及其数据库"""
+    data = request.get_json() or {}
+    filename = data.get('filename')
+    
+    if not filename:
+        return jsonify({'status': 'error', 'message': '请提供文件名'}), 400
+    
+    filepath = os.path.join(EVTX_DIRECTORY, filename)
+    if not os.path.exists(filepath):
+        return jsonify({'status': 'error', 'message': f'文件不存在: {filename}'}), 404
+    
+    try:
+        # 删除EVTX文件
+        os.remove(filepath)
+        
+        # 删除对应的数据库文件
+        db_path = os.path.join(EVTX_DIRECTORY, 'db', f"{os.path.splitext(filename)[0]}.db")
+        if os.path.exists(db_path):
+            os.remove(db_path)
+        # 删除WAL/SHM文件
+        for suffix in ['-wal', '-shm']:
+            wal_path = db_path + suffix
+            if os.path.exists(wal_path):
+                os.remove(wal_path)
+        
+        bump_version()
+        return jsonify({'status': 'success', 'message': f'已删除: {filename}'})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': f'删除失败: {str(e)}'}), 500
+
+@app.route('/api/file/archive', methods=['POST'])
+def archive_file():
+    """归档EVTX文件（移动到归档目录）"""
+    data = request.get_json() or {}
+    filename = data.get('filename')
+    
+    if not filename:
+        return jsonify({'status': 'error', 'message': '请提供文件名'}), 400
+    
+    filepath = os.path.join(EVTX_DIRECTORY, filename)
+    if not os.path.exists(filepath):
+        return jsonify({'status': 'error', 'message': f'文件不存在: {filename}'}), 404
+    
+    ensure_archive_dir()
+    
+    try:
+        # 生成归档文件名（带时间戳）
+        timestamp = time.strftime('%Y%m%d_%H%M%S')
+        base, ext = os.path.splitext(filename)
+        archive_name = f'{base}_{timestamp}{ext}'
+        archive_path = os.path.join(ARCHIVE_DIRECTORY, archive_name)
+        
+        # 如果归档文件已存在，添加序号
+        if os.path.exists(archive_path):
+            counter = 1
+            while os.path.exists(archive_path):
+                archive_name = f'{base}_{timestamp}_{counter}{ext}'
+                archive_path = os.path.join(ARCHIVE_DIRECTORY, archive_name)
+                counter += 1
+        
+        # 移动EVTX文件
+        shutil.move(filepath, archive_path)
+        
+        # 移动数据库文件（如果存在）
+        db_path = os.path.join(EVTX_DIRECTORY, 'db', f"{os.path.splitext(filename)[0]}.db")
+        if os.path.exists(db_path):
+            archive_db_name = f"{os.path.splitext(filename)[0]}_{timestamp}.db"
+            archive_db_path = os.path.join(ARCHIVE_DIRECTORY, archive_db_name)
+            shutil.move(db_path, archive_db_path)
+            # 移动WAL/SHM文件
+            for suffix in ['-wal', '-shm']:
+                wal_path = db_path + suffix
+                if os.path.exists(wal_path):
+                    shutil.move(wal_path, archive_db_path + suffix)
+        
+        bump_version()
+        return jsonify({
+            'status': 'success',
+            'message': f'已归档: {filename} -> {archive_name}',
+            'archive_name': archive_name
+        })
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': f'归档失败: {str(e)}'}), 500
+
+@app.route('/api/file/restore', methods=['POST'])
+def restore_file():
+    """从归档目录恢复文件"""
+    data = request.get_json() or {}
+    filename = data.get('filename')
+    
+    if not filename:
+        return jsonify({'status': 'error', 'message': '请提供文件名'}), 400
+    
+    filepath = os.path.join(ARCHIVE_DIRECTORY, filename)
+    if not os.path.exists(filepath):
+        return jsonify({'status': 'error', 'message': f'归档文件不存在: {filename}'}), 404
+    
+    try:
+        # 恢复EVTX文件
+        dest_path = os.path.join(EVTX_DIRECTORY, filename)
+        if os.path.exists(dest_path):
+            return jsonify({'status': 'error', 'message': f'目标文件已存在: {filename}'}), 409
+        
+        shutil.move(filepath, dest_path)
+        
+        # 恢复数据库文件（如果存在）
+        db_name = os.path.splitext(filename)[0] + '.db'
+        archive_db_path = os.path.join(ARCHIVE_DIRECTORY, db_name)
+        if os.path.exists(archive_db_path):
+            dest_db_path = os.path.join(EVTX_DIRECTORY, 'db', db_name)
+            shutil.move(archive_db_path, dest_db_path)
+            for suffix in ['-wal', '-shm']:
+                wal_path = archive_db_path + suffix
+                if os.path.exists(wal_path):
+                    shutil.move(wal_path, dest_db_path + suffix)
+        
+        bump_version()
+        return jsonify({'status': 'success', 'message': f'已恢复: {filename}'})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': f'恢复失败: {str(e)}'}), 500
+
+@app.route('/api/archive/list')
+def list_archive():
+    """获取归档文件列表"""
+    ensure_archive_dir()
+    archives = []
+    for f in sorted(os.listdir(ARCHIVE_DIRECTORY)):
+        filepath = os.path.join(ARCHIVE_DIRECTORY, f)
+        if f.lower().endswith('.evtx'):
+            archives.append({
+                'filename': f,
+                'size': os.path.getsize(filepath),
+                'archived_time': time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(os.path.getmtime(filepath)))
+            })
+    return jsonify({'status': 'success', 'archives': archives})
+
+@app.route('/api/sync/version')
+def get_sync_version():
+    """获取当前文件变更版本号"""
+    return jsonify({'status': 'success', 'version': file_change_version['version']})
+
+@app.route('/api/sync/poll')
+def poll_sync():
+    """轮询检查文件变更（长轮询）"""
+    client_version = int(request.args.get('version', 0))
+    timeout = int(request.args.get('timeout', 25))
+    
+    start_time = time.time()
+    while time.time() - start_time < timeout:
+        if file_change_version['version'] != client_version:
+            return jsonify({
+                'status': 'changed',
+                'version': file_change_version['version']
+            })
+        time.sleep(0.5)
+    
+    return jsonify({
+        'status': 'timeout',
+        'version': file_change_version['version']
+    })
 
 if __name__ == '__main__':
     app.run(
