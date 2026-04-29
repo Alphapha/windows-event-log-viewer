@@ -102,6 +102,24 @@
             background: #fff; color: #1a73e8; font-size: 10px; cursor: pointer; white-space: nowrap;
         }
         .archive-item .btn-restore:hover { background: #1a73e8; color: white; }
+        .event-id-panel { border-top: 1px solid #e0e0e0; background: #fff; }
+        .eid-panel-header {
+            padding: 8px 12px; background: #f8f9fa; border-bottom: 1px solid #e0e0e0;
+            font-size: 11px; font-weight: 600; color: #333;
+        }
+        .eid-panel-list { max-height: 200px; overflow-y: auto; padding: 4px 8px; }
+        .eid-panel-item {
+            display: flex; align-items: center; gap: 6px; padding: 4px 8px;
+            border-radius: 4px; cursor: pointer; font-size: 11px; margin-bottom: 2px;
+            transition: background 0.1s;
+        }
+        .eid-panel-item:hover { background: #e8eaed; }
+        .eid-panel-item.active { background: #1a73e8; color: white; }
+        .eid-panel-item .eid-id { font-weight: 600; min-width: 45px; }
+        .eid-panel-item .eid-desc { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #666; }
+        .eid-panel-item.active .eid-desc { color: rgba(255,255,255,0.8); }
+        .eid-panel-item .eid-count { font-size: 10px; color: #999; flex-shrink: 0; }
+        .eid-panel-item.active .eid-count { color: rgba(255,255,255,0.7); }
         .main-content { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
         .toolbar {
             background: #fff; padding: 8px 16px; border-bottom: 1px solid #e0e0e0;
@@ -157,16 +175,6 @@
         .sort-btn.active { background: #1a73e8; color: white; border-color: #1a73e8; }
         .filter-separator { width: 1px; height: 20px; background: #e0e0e0; flex-shrink: 0; }
         .filter-label { font-size: 11px; color: #666; white-space: nowrap; font-weight: 500; }
-        .event-id-stats { display: flex; gap: 4px; align-items: center; flex-wrap: nowrap; overflow-x: auto; max-width: 500px; }
-        .event-id-chip {
-            padding: 3px 8px; border-radius: 12px; font-size: 11px; cursor: pointer;
-            border: 1px solid #ddd; background: #fff; color: #5f6368;
-            transition: all 0.15s; user-select: none; white-space: nowrap; flex-shrink: 0;
-        }
-        .event-id-chip:hover { background: #e8eaed; }
-        .event-id-chip.active { background: #1a73e8; color: white; border-color: #1a73e8; }
-        .event-id-chip .eid-count { font-size: 10px; opacity: 0.7; margin-left: 2px; }
-        .event-id-more { padding: 3px 8px; border-radius: 12px; font-size: 11px; cursor: pointer; border: 1px dashed #ccc; background: #f8f9fa; color: #999; }
         .field-selector { display: flex; gap: 4px; flex-wrap: wrap; flex: 1; }
         .field-checkbox {
             display: flex; align-items: center; gap: 3px; cursor: pointer;
@@ -265,6 +273,12 @@
             <div class="file-list" id="fileList">
                 <div class="empty-state"><p>&#x52A0;&#x8F7D;&#x4E2D;...</p></div>
             </div>
+            <div class="event-id-panel" id="eventIdPanel" style="display:none;">
+                <div class="eid-panel-header">
+                    <span>&#x1F4CA; 事件ID统计</span>
+                </div>
+                <div class="eid-panel-list" id="eidPanelList"></div>
+            </div>
             <div class="archive-panel" id="archivePanel" style="display:none;">
                 <div class="archive-header" onclick="toggleArchive()">
                     <span>&#x1F4E6; 归档文件 (<span id="archiveCount">0</span>)</span>
@@ -284,11 +298,6 @@
                     <input class="search-box" id="searchBox" placeholder="&#x641C;&#x7D22;&#x4E8B;&#x4EF6;ID/&#x63D0;&#x4F9B;&#x7A0B;&#x5E8F;/&#x6D88;&#x606F;..." onkeydown="if(event.key==='Enter')doSearch()">
                     <button class="search-btn" onclick="doSearch()">&#x1F50D; &#x641C;&#x7D22;</button>
                     <button class="refresh-btn" onclick="rebuildDb()" title="&#x5F3A;&#x5236;&#x91CD;&#x65B0;&#x6784;&#x5EFA;&#x6570;&#x636E;&#x5E93;">&#x1F504; &#x91CD;&#x5EFA;</button>
-                    <span class="filter-separator"></span>
-                    <span class="filter-label">事件ID:</span>
-                    <div class="event-id-stats" id="eventIdStats">
-                        <span style="font-size:11px;color:#999">选择文件后显示</span>
-                    </div>
                 </div>
                 <div class="toolbar-row">
                     <span class="filter-label">级别:</span>
@@ -551,8 +560,7 @@
             document.getElementById('contentArea').innerHTML =
                 '<div class="empty-state"><div class="icon">&#x1F4CB;</div><p>请从左侧选择一个日志文件</p></div>';
             document.getElementById('statsBar').style.display = 'none';
-            document.getElementById('eventIdStats').innerHTML =
-                '<span style="font-size:11px;color:#999">选择文件后显示</span>';
+            document.getElementById('eventIdPanel').style.display = 'none';
         }
 
         async function loadEvents(page) {
@@ -685,6 +693,7 @@
                     await pollBuildStatus();
                 }
                 await loadEvents(currentPage);
+                await loadEventIds();
             } catch (e) { console.error(e); }
         }
 
@@ -878,17 +887,21 @@
         }
 
         function renderEventIds(eventIds) {
-            const container = document.getElementById('eventIdStats');
+            const container = document.getElementById('eidPanelList');
+            const panel = document.getElementById('eventIdPanel');
             if (eventIds.length === 0) {
-                container.innerHTML = '<span style="font-size:11px;color:#999">暂无数据</span>';
+                panel.style.display = 'none';
                 return;
             }
+            panel.style.display = 'block';
             let html = '';
             eventIds.forEach(eid => {
                 const isActive = selectedEventId === eid.event_id ? ' active' : '';
-                const desc = eid.description ? ` title="${eid.description}"` : '';
-                const label = eid.description ? `${eid.event_id} ${eid.description}` : eid.event_id;
-                html += `<span class="event-id-chip${isActive}" onclick="filterByEventId('${eid.event_id}')"${desc}>${label}<span class="eid-count">${eid.count}</span></span>`;
+                html += `<div class="eid-panel-item${isActive}" onclick="filterByEventId('${eid.event_id}')">
+                    <span class="eid-id">${eid.event_id}</span>
+                    <span class="eid-desc">${eid.description || '未知事件'}</span>
+                    <span class="eid-count">${eid.count}</span>
+                </div>`;
             });
             container.innerHTML = html;
         }
